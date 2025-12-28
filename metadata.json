@@ -1,0 +1,5 @@
+{
+  "name": "Finance Engine: Global Investment Tracker",
+  "description": "A sophisticated investment management system for tracking BR and US assets, featuring weighted average price calculations, capital gains reports, and real-time market data.",
+  "requestFramePermissions": []
+}
