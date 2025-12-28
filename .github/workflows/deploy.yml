@@ -1,0 +1,40 @@
+# Arquivo de Automação de Deploy para o Firebase Hosting
+
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Baixa o código do seu repositório
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Configura o ambiente Node.js para a compilação
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. Instala as dependências do projeto
+      - name: Install Dependencies
+        run: npm install
+
+      # 4. Compila o projeto para produção (cria a pasta /dist)
+      - name: Build Project
+        run: npm run build
+
+      # 5. Executa a ação oficial do Firebase para deploy no Hosting
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_PLANILHAFINANCEIRA01 }}'
+          channelId: live
+          projectId: planilhafinanceira01
