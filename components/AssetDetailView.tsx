@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Transaction, Position, TransactionType, Country, MatchedLot } from '../types';
 import { MarketPrice } from '../services/geminiService';
@@ -8,12 +7,11 @@ interface Props {
   transactions: Transaction[];
   position: Position | undefined;
   onBack: () => void;
-  usdRate: number;
   sellMatches: Record<string, MatchedLot[]>;
   marketPrice: MarketPrice | undefined;
 }
 
-const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBack, usdRate, sellMatches, marketPrice }) => {
+const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBack, sellMatches, marketPrice }) => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   
   const assetTx = transactions
