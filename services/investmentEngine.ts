@@ -1,10 +1,8 @@
-
-import { Transaction, TransactionType, Position, Country, MonthlyRealizedGain, Lot, AssetCategory, MatchedLot, RealizedGainDetail, HistoricalPoint, TaxMonthlySummary } from '../types';
+import { Transaction, TransactionType, Position, Country, AssetCategory, MatchedLot, RealizedGainDetail, HistoricalPoint, TaxMonthlySummary } from '../types';
 
 export const calculateConsolidatedData = (
   transactions: Transaction[], 
-  usdRate: number = 5.0,
-  marketPrices: Record<string, { price: number }> = {}
+  usdRate: number = 5.0
 ) => {
   const sortedTx = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   
