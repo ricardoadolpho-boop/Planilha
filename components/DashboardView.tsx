@@ -1,20 +1,18 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, AreaChart, Area } from 'recharts';
-import { Position, MonthlyRealizedGain, Country, AssetCategory, RealizedGainDetail, HistoricalPoint } from '../types';
+import { Position, MonthlyRealizedGain, Country, AssetCategory, HistoricalPoint } from '../types';
 import { getMarketSummary, MarketPrice } from '../services/geminiService';
 
 interface Props {
   positions: Position[];
   realizedGains: MonthlyRealizedGain[];
-  realizedGainDetails: RealizedGainDetail[];
   historicalEquity: HistoricalPoint[];
   usdRate: number;
   onInspectTicker: (ticker: string) => void;
   marketPrices: Record<string, MarketPrice>;
 }
 
-const DashboardView: React.FC<Props> = ({ positions, realizedGains, realizedGainDetails, historicalEquity, usdRate, onInspectTicker, marketPrices }) => {
+const DashboardView: React.FC<Props> = ({ positions, realizedGains, historicalEquity, usdRate, marketPrices }) => {
   const [insight, setInsight] = useState<string>("Carregando análise macroeconômica e insights de volatilidade...");
   
   // --- CÁLCULOS DE ENGENHARIA FINANCEIRA ---
@@ -46,9 +44,6 @@ const DashboardView: React.FC<Props> = ({ positions, realizedGains, realizedGain
   // Yield on Cost Global (Retorno sobre Capital Investido)
   const yieldOnCost = totalInvestedBRL > 0 ? (totalDividendsBRL / totalInvestedBRL) * 100 : 0;
   
-  // Dividend Yield Estimado (Baseado no valor atual e histórico de dividendos - Proxy simples)
-  const currentDividendYield = totalEquityBRL > 0 ? (totalDividendsBRL / totalEquityBRL) * 100 : 0;
-
   // --- DADOS PARA GRÁFICOS ---
 
   // Alocação por Ativo (Exposição Individual) - Top 5 + Outros
@@ -80,20 +75,7 @@ const DashboardView: React.FC<Props> = ({ positions, realizedGains, realizedGain
     return Object.entries(groups).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
   }, [positions, marketPrices, usdRate]);
 
-  // Alocação Geográfica (Exposição Cambial)
-  const geoData = useMemo(() => {
-    const groups: Record<string, number> = {};
-    positions.filter(p => p.totalQuantity > 0).forEach(p => {
-      const currentPrice = marketPrices[p.ticker]?.price || p.averagePrice;
-      const value = p.totalQuantity * currentPrice * (p.country === Country.USA ? usdRate : 1);
-      const geo = p.country === Country.USA ? 'Dólar (USD)' : 'Real (BRL)';
-      groups[geo] = (groups[geo] || 0) + value;
-    });
-    return Object.entries(groups).map(([name, value]) => ({ name, value }));
-  }, [positions, marketPrices, usdRate]);
-
   const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#64748b'];
-  const GEO_COLORS = ['#10b981', '#3b82f6']; // Verde (BR), Azul (US)
 
   useEffect(() => {
     const tickers = positions
@@ -288,7 +270,7 @@ const DashboardView: React.FC<Props> = ({ positions, realizedGains, realizedGain
                   dataKey="value"
                   stroke="none"
                 >
-                  {categoryData.map((entry, index) => (
+                  {categoryData.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -338,7 +320,7 @@ const DashboardView: React.FC<Props> = ({ positions, realizedGains, realizedGain
                     }}
                   />
                   <Bar dataKey="value" fill="#4f46e5" radius={[0, 4, 4, 0]} barSize={20}>
-                    {topAssetsData.map((entry, index) => (
+                    {topAssetsData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={index === 0 ? '#4f46e5' : '#818cf8'} />
                     ))}
                   </Bar>
