@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Transaction, Country, TransactionType, AssetCategory, Position } from './types';
+import { Transaction } from './types';
 import { calculateConsolidatedData } from './services/investmentEngine';
 import { fetchRealTimePrices, MarketPrice } from './services/geminiService';
 import DashboardView from './components/DashboardView';
@@ -19,9 +18,7 @@ const App: React.FC = () => {
   const [inspectedTicker, setInspectedTicker] = useState<string | null>(null);
   const [usdRate] = useState(5.45); 
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [marketPrices, setMarketPrices] = useState<Record<string, MarketPrice>>({});
-  const [marketSources, setMarketSources] = useState<{title: string, uri: string}[]>([]);
   
   // State agora começa vazio e é preenchido pelo Firestore
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -73,8 +70,6 @@ const App: React.FC = () => {
         priceMap[p.ticker] = p;
       });
       setMarketPrices(priceMap);
-      setMarketSources(result.sources);
-      setLastUpdate(new Date());
     }
     setIsUpdatingPrices(false);
   }, [tickersToUpdate, isUpdatingPrices]);
@@ -85,11 +80,11 @@ const App: React.FC = () => {
     }
     const interval = setInterval(refreshPrices, 120000); 
     return () => clearInterval(interval);
-  }, [tickersToUpdate.length]);
+  }, [tickersToUpdate.length, marketPrices, refreshPrices]);
 
   const { activePositions, realizedGains, sellMatches, realizedGainDetails, historicalEquity, taxReport } = useMemo(() => 
-    calculateConsolidatedData(transactions, usdRate, marketPrices), 
-    [transactions, usdRate, marketPrices]
+    calculateConsolidatedData(transactions, usdRate), 
+    [transactions, usdRate]
   );
 
   // CRUD via Firestore
@@ -286,7 +281,6 @@ const App: React.FC = () => {
                 transactions={transactions} 
                 position={activePositions.find(p => p.ticker === inspectedTicker)}
                 onBack={() => setInspectedTicker(null)}
-                usdRate={usdRate}
                 sellMatches={sellMatches}
                 marketPrice={marketPrices[inspectedTicker]}
               />
@@ -294,7 +288,6 @@ const App: React.FC = () => {
               <DashboardView 
                 positions={activePositions} 
                 realizedGains={realizedGains} 
-                realizedGainDetails={realizedGainDetails}
                 historicalEquity={historicalEquity}
                 usdRate={usdRate} 
                 onInspectTicker={handleInspectTicker}
