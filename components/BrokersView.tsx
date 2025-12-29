@@ -1,15 +1,14 @@
 import React from 'react';
-import { Position, Country, RealizedGainDetail } from '../types';
+import { Position, Country } from '../types';
 import { MarketPrice } from '../services/geminiService';
 
 interface Props {
   positions: Position[];
-  realizedGainDetails: RealizedGainDetail[];
   usdRate: number;
   marketPrices: Record<string, MarketPrice>;
 }
 
-const BrokersView: React.FC<Props> = ({ positions, realizedGainDetails, usdRate, marketPrices }) => {
+const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
   const brokersMap = positions.reduce((acc, pos) => {
     if (!acc[pos.broker]) acc[pos.broker] = [];
     acc[pos.broker].push(pos);
