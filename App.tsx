@@ -82,7 +82,7 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [tickersToUpdate.length, marketPrices, refreshPrices]);
 
-  const { activePositions, realizedGains, sellMatches, realizedGainDetails, historicalEquity, taxReport } = useMemo(() => 
+  const { activePositions, realizedGains, sellMatches, historicalEquity, taxReport } = useMemo(() => 
     calculateConsolidatedData(transactions, usdRate), 
     [transactions, usdRate]
   );
