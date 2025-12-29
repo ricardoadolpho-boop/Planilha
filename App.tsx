@@ -298,7 +298,7 @@ const App: React.FC = () => {
           {activeTab === 'tax' && <TaxReportView taxReport={taxReport} />}
           {activeTab === 'dividends' && <DividendReportView transactions={transactions} usdRate={usdRate} />}
           {activeTab === 'brokers' && (
-            <BrokersView positions={activePositions} realizedGainDetails={realizedGainDetails} usdRate={usdRate} marketPrices={marketPrices} />
+            <BrokersView positions={activePositions} usdRate={usdRate} marketPrices={marketPrices} />
           )}
           {activeTab === 'tx' && (
             <TransactionsView 
