@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -84,7 +83,7 @@ export const getMarketSummary = async (tickers: string[]) => {
   }
 };
 
-export const getMockPrice = (ticker: string, country: string) => {
+export const getMockPrice = (ticker: string) => {
   const base = ticker.length * 10 + 50;
   return base + (Math.random() * 10 - 5);
 };
