@@ -38,7 +38,6 @@ const TaxReportView: React.FC<Props> = ({ taxReport }) => {
               <h3 className="font-black text-slate-800 uppercase tracking-tight">{summary.month}</h3>
               {summary.isExempt ? (
                 <span className="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-emerald-200">
-                  {/* Fixed JSX error: Use &lt; to prevent '< R$' from being parsed as a component tag */}
                   Isento (Vendas &lt; R$ 20k)
                 </span>
               ) : (
