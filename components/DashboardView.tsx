@@ -312,7 +312,7 @@ const DashboardView: React.FC<Props> = ({ positions, realizedGains, historicalEq
                       if (active && payload && payload.length) {
                         return (
                           <div className="bg-slate-800 text-white text-xs p-2 rounded shadow-lg">
-                            <span className="font-bold">{payload[0]?.payload?.name}:</span> R$ {payload[0].value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                            <span className="font-bold">{payload[0]?.payload?.name}:</span> R$ {(payload[0]?.value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                           </div>
                         );
                       }
