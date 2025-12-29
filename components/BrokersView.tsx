@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Position, Country, RealizedGainDetail } from '../types';
 import { MarketPrice } from '../services/geminiService';
@@ -16,13 +15,6 @@ const BrokersView: React.FC<Props> = ({ positions, realizedGainDetails, usdRate,
     acc[pos.broker].push(pos);
     return acc;
   }, {} as Record<string, Position[]>);
-
-  const realizedByBroker = realizedGainDetails.reduce((acc, detail) => {
-    if (!acc[detail.broker]) acc[detail.broker] = 0;
-    const gainBRL = detail.country === Country.BR ? detail.gain : detail.gain * usdRate;
-    acc[detail.broker] += gainBRL;
-    return acc;
-  }, {} as Record<string, number>);
 
   const formatCurrency = (val: number, country: Country) => {
     return country === Country.BR 
@@ -48,8 +40,6 @@ const BrokersView: React.FC<Props> = ({ positions, realizedGainDetails, usdRate,
           const dividends = pos.totalDividends;
           return acc + (pos.country === Country.BR ? dividends : dividends * usdRate);
         }, 0);
-
-        const brokerTotalRealizedBRL = realizedByBroker[broker] || 0;
 
         return (
           <div key={broker} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
