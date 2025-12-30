@@ -13,7 +13,7 @@ import DividendReportView from './components/DividendReportView';
 import { db } from './firebaseConfig';
 import { collection, onSnapshot, setDoc, doc, updateDoc, deleteDoc, query, writeBatch } from 'firebase/firestore';
 
-// Componente de Navegação Mobile Extraído
+// Componente de Navegação Mobile
 const MobileNav = ({ activeTab, setActiveTab }: { activeTab: string, setActiveTab: (t: any) => void }) => {
   const tabs = [
     { id: 'dash', label: 'Início', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -44,11 +44,11 @@ const App: React.FC = () => {
   const [inspectedTicker, setInspectedTicker] = useState<string | null>(null);
   const [usdRate] = useState(5.45); 
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [customApiUrl, setCustomApiUrl] = useState(() => localStorage.getItem('custom_api_url') || '');
   
-  // UseRef para controle estrito de inicialização única (Evita consumo excessivo de cota)
   const autoRefreshRef = useRef(false);
   
-  // State inicializa lendo do LocalStorage
   const [marketPrices, setMarketPrices] = useState<Record<string, MarketPrice>>(() => {
     try {
       const cached = localStorage.getItem('gemini_prices_cache_v1');
@@ -62,7 +62,7 @@ const App: React.FC = () => {
            return priceMap;
         }
       }
-    } catch(e) { console.error("Erro ao ler cache inicial", e); }
+    } catch(e) { console.error("Erro cache", e); }
     return {};
   });
 
@@ -79,45 +79,45 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
 
-  // Efeito de Inicialização (Firebase)
+  // Load Transactions
   useEffect(() => {
     setDbStatus('connecting');
-    
     const unsubscribeTx = onSnapshot(query(collection(db, "transactions")), 
       (snapshot) => {
         setTransactions(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Transaction)));
         setIsLoading(false);
         setDbStatus('connected');
       }, 
-      (error) => {
-        console.error("Erro TX:", error);
-        setIsLoading(false);
-        setDbStatus('error');
-      }
+      (error) => { console.error("Erro TX:", error); setIsLoading(false); setDbStatus('error'); }
     );
-
     const unsubscribeDiv = onSnapshot(query(collection(db, "announced_dividends")),
-      (snapshot) => {
-        setAnnouncedDividends(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AnnouncedDividend)));
-      },
+      (snapshot) => setAnnouncedDividends(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AnnouncedDividend))),
       (error) => console.error("Erro Div:", error)
     );
-
     return () => { unsubscribeTx(); unsubscribeDiv(); };
   }, []);
 
-  // Lista de tickers únicos para atualização
+  const engineData = useMemo(() => calculateConsolidatedData(transactions, usdRate), [transactions, usdRate]);
+
   const tickersToUpdate = useMemo(() => {
     const set = new Set<string>();
-    transactions.forEach(t => set.add(t.ticker));
+    engineData.activePositions.forEach(p => {
+      if (p.category !== 'Renda Fixa' && p.totalQuantity > 0) set.add(p.ticker);
+    });
     return Array.from(set);
-  }, [transactions]);
+  }, [engineData.activePositions]);
 
-  // Função de atualização de preços
+  const handleManualPriceUpdate = (ticker: string, newPrice: number) => {
+    setMarketPrices(prev => {
+      const updated = { ...prev, [ticker]: { ticker, price: newPrice, changePercent: prev[ticker]?.changePercent || 0 } };
+      localStorage.setItem('gemini_prices_cache_v1', JSON.stringify({ timestamp: Date.now(), data: { prices: Object.values(updated), sources: [] } }));
+      return updated;
+    });
+  };
+
   const refreshPrices = useCallback(async () => {
     if (isUpdatingPrices || tickersToUpdate.length === 0) return;
     setIsUpdatingPrices(true);
-    
     try {
       const result = await fetchRealTimePrices(tickersToUpdate);
       if (result) {
@@ -126,77 +126,72 @@ const App: React.FC = () => {
         setMarketPrices(prev => ({...prev, ...priceMap}));
         setLastUpdated(new Date());
       }
-    } catch(e) {
-      console.error("Erro ao atualizar preços", e);
-    } finally {
-      setIsUpdatingPrices(false);
-    }
+    } catch(e) { console.error("Erro atualizar preços", e); } 
+    finally { setIsUpdatingPrices(false); }
   }, [tickersToUpdate, isUpdatingPrices]);
 
-  // Autoload inicial de preços - Lógica Protegida via Ref
   useEffect(() => {
     if (!isLoading && tickersToUpdate.length > 0 && !autoRefreshRef.current) {
-      
       const doRefresh = async () => {
-         // Marca imediatamente como executado
          autoRefreshRef.current = true;
-         
-         // Se não temos preços em cache ou na memória, chama atualização
-         if (Object.keys(marketPrices).length === 0) {
-            await refreshPrices();
-         }
+         if (Object.keys(marketPrices).length === 0) await refreshPrices();
       };
-
-      const timer = setTimeout(doRefresh, 1500); // Delay leve para garantir estabilidade
+      const timer = setTimeout(doRefresh, 2000); 
       return () => clearTimeout(timer);
     }
   }, [isLoading, tickersToUpdate.length, marketPrices, refreshPrices]); 
 
-  // Engine Calculation
-  const engineData = useMemo(() => 
-    calculateConsolidatedData(transactions, usdRate), 
-    [transactions, usdRate]
-  );
-
-  // CRUD wrappers
   const handleInspectTicker = (ticker: string | null) => {
     setInspectedTicker(ticker);
     if(ticker) setActiveTab('dash');
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto"></div>
-          <p className="text-slate-500 font-medium text-sm">Sincronizando carteira...</p>
-        </div>
-      </div>
-    );
-  }
-  
-  if (dbStatus === 'error') {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="text-center space-y-4 bg-white p-8 rounded-2xl shadow-lg border border-rose-200 max-w-md">
-          <div className="mx-auto w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center">
-            <svg className="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-          </div>
-          <h2 className="text-xl font-bold text-slate-800">Sem Conexão</h2>
-          <p className="text-slate-500 text-sm">Não foi possível carregar seus dados (Permissão Negada ou Erro de Rede).</p>
-          <button onClick={() => window.location.reload()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700">Tentar Novamente</button>
-        </div>
-      </div>
-    );
-  }
-
-  const handleTabChange = (tab: any) => {
-    setActiveTab(tab);
-    setInspectedTicker(null);
+  const saveSettings = () => {
+    localStorage.setItem('custom_api_url', customApiUrl);
+    setShowSettings(false);
+    // Tenta atualizar imediatamente se tiver URL
+    if (customApiUrl && tickersToUpdate.length > 0) refreshPrices();
   };
+
+  if (isLoading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div></div>;
+  if (dbStatus === 'error') return <div className="min-h-screen bg-slate-50 flex items-center justify-center">Erro de Conexão.</div>;
+
+  const handleTabChange = (tab: any) => { setActiveTab(tab); setInspectedTicker(null); };
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
+      
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl p-6 animate-in zoom-in-95">
+             <h3 className="text-lg font-bold text-slate-800 mb-4">Configuração do Oráculo de Preços</h3>
+             <div className="space-y-4">
+               <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">URL do Google Apps Script (Web App)</label>
+                  <input 
+                    type="url" 
+                    placeholder="https://script.google.com/macros/s/..." 
+                    value={customApiUrl}
+                    onChange={(e) => setCustomApiUrl(e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-2">
+                    Crie um script no Google Drive com a função <code>doGet</code> usando <code>GOOGLEFINANCE</code> e publique como Web App (Executar como 'Eu', Acesso 'Qualquer um').
+                  </p>
+               </div>
+               <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100 text-xs text-indigo-700">
+                  <strong>Dica de Engenharia:</strong> Isso remove limites de cota e usa dados oficiais do Google Finance gratuitamente.
+               </div>
+               <div className="flex justify-end gap-3 pt-2">
+                 <button onClick={() => setShowSettings(false)} className="px-4 py-2 text-slate-600 font-bold text-sm">Cancelar</button>
+                 <button onClick={saveSettings} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700">Salvar & Conectar</button>
+               </div>
+             </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar Desktop */}
       <aside className="hidden md:flex w-64 bg-slate-900 text-white flex-col sticky top-0 h-screen p-6 shadow-2xl z-10">
         <div className="flex items-center gap-3 mb-10">
@@ -207,6 +202,7 @@ const App: React.FC = () => {
         </div>
 
         <nav className="flex-1 space-y-2">
+          {/* Navigation Items */}
           {[
             { id: 'dash', label: 'Dashboard', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
             { id: 'brokers', label: 'Custódia', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
@@ -214,55 +210,34 @@ const App: React.FC = () => {
             { id: 'dividends', label: 'Proventos', icon: 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z' },
             { id: 'tax', label: 'Fiscal / DARF', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' }
           ].map(item => (
-            <button 
-              key={item.id}
-              onClick={() => handleTabChange(item.id)} 
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}
-            >
+            <button key={item.id} onClick={() => handleTabChange(item.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={item.icon} /></svg>
               {item.label}
             </button>
           ))}
         </nav>
-
-        <div className="mt-6 pt-6 border-t border-slate-800">
-           <div className="flex items-center gap-3 px-2">
-              <div className="relative">
-                 <div className={`w-3 h-3 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                 {dbStatus === 'connected' && <div className="absolute top-0 left-0 w-3 h-3 rounded-full bg-emerald-500 animate-ping"></div>}
-              </div>
-              <div className="flex flex-col">
-                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</span>
-                 <span className={`text-xs font-bold ${dbStatus === 'connected' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                    {dbStatus === 'connected' ? 'Online' : 'Reconectando'}
-                 </span>
-              </div>
-           </div>
-        </div>
       </aside>
 
       <main className="flex-1 p-4 md:p-10 overflow-y-auto pb-24 md:pb-10">
         <header className="mb-6 flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                 <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-                   {inspectedTicker || (activeTab === 'dash' ? 'Visão Geral' : activeTab === 'tx' ? 'Lançamentos' : activeTab === 'brokers' ? 'Custódia' : activeTab === 'tax' ? 'Fiscal' : 'Proventos')}
-                 </h2>
-                 {transactions.length > 0 && <span className="bg-indigo-100 text-indigo-700 text-[9px] font-black px-2 py-0.5 rounded border border-indigo-200 uppercase tracking-widest hidden md:inline-block">{transactions.length} Ops</span>}
-              </div>
-              <p className="text-slate-500 font-medium text-xs md:text-base truncate max-w-[200px] md:max-w-none">
-                Sincronização em tempo real.
-              </p>
+               <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
+                 {inspectedTicker || (activeTab === 'dash' ? 'Visão Geral' : activeTab === 'tx' ? 'Lançamentos' : activeTab === 'brokers' ? 'Custódia' : activeTab === 'tax' ? 'Fiscal' : 'Proventos')}
+               </h2>
+               <p className="text-slate-500 font-medium text-xs md:text-base">
+                {customApiUrl ? 'Conectado ao Oráculo GAS (Alta Confiabilidade)' : 'Modo IA Gemini (Fallback)'}
+               </p>
             </div>
             
-            <div className="flex items-center gap-3">
-              {lastUpdated && (
-                <div className="text-right hidden sm:block">
-                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Cotação</p>
-                  <p className="text-xs font-bold text-slate-600">{lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-              )}
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowSettings(true)}
+                className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition-colors"
+                title="Configurar Oráculo de Preços"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+              </button>
               <button 
                 onClick={refreshPrices}
                 disabled={isUpdatingPrices}
@@ -276,6 +251,7 @@ const App: React.FC = () => {
         </header>
 
         <div className="max-w-7xl mx-auto">
+          {/* Conteúdo Dinâmico Baseado na Tab Ativa */}
           {activeTab === 'dash' && (
             inspectedTicker ? (
               <AssetDetailView 
@@ -286,6 +262,7 @@ const App: React.FC = () => {
                 sellMatches={engineData.sellMatches}
                 marketPrice={marketPrices[inspectedTicker]}
                 usdRate={usdRate}
+                onManualUpdate={handleManualPriceUpdate}
               />
             ) : (
               <DashboardView 
