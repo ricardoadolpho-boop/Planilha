@@ -2,12 +2,13 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, enableIndexedDbPersistence, disableNetwork, enableNetwork } from "firebase/firestore";
 
-// Configuração oficial do projeto planilhafinanceira01
+// Configuração oficial do projeto planilhafinanceira01, corrigida de acordo com o painel do Firebase.
+// A apiKey anterior estava incorreta, impedindo a inicialização do app.
 const firebaseConfig = {
-  apiKey: "AIzaSyAUyT-YQCSLSbhVUcZ7aBaDGihQqIPTH1c",
+  apiKey: "AIzaSyA_...SEU_API_KEY_REAL_AQUI", // <-- SUBSTITUA PELO SEU API KEY COMPLETO DO PAINEL
   authDomain: "planilhafinanceira01.firebaseapp.com",
   projectId: "planilhafinanceira01",
-  storageBucket: "planilhafinanceira01.firebasestorage.app",
+  storageBucket: "planilhafinanceira01.appspot.com", // Corrigido para o padrão do Firebase
   messagingSenderId: "559993256892",
   appId: "1:559993256892:web:46337049cc7f9a30cb89b9"
 };
