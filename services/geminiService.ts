@@ -20,12 +20,14 @@ export interface PriceUpdateResponse {
 
 // Helper para identificar erros de cota
 const isQuotaError = (error: any) => {
-  const msg = error?.toString() || '';
-  return msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED');
+  const msg = error?.toString()?.toLowerCase() || '';
+  return msg.includes('429') || msg.includes('resource_exhausted') || msg.includes('quota');
 };
 
-export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdateResponse | null> => {
-  if (tickers.length === 0) return null;
+export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdateResponse> => {
+  if (tickers.length === 0) {
+    return { prices: [], sources: [] };
+  }
 
   try {
     const response = await ai.models.generateContent({
@@ -76,16 +78,17 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
       };
     } catch (parseError) {
       console.error("Erro ao parsear JSON do Gemini:", parseError, "Texto recebido:", cleanText);
-      return null;
+      throw new Error("A API retornou uma resposta em formato inválido.");
     }
 
   } catch (error) {
     if (isQuotaError(error)) {
-      console.warn("Gemini: Cota excedida ao buscar preços. Mantendo valores anteriores.");
+      console.warn("Gemini: Cota excedida ao buscar preços.");
+      throw new Error("Cota da API Gemini excedida. Por favor, tente novamente mais tarde.");
     } else {
       console.error("Erro ao buscar preços reais:", error);
+      throw new Error("Falha ao buscar cotações. Verifique a conexão ou a API.");
     }
-    return null;
   }
 };
 
