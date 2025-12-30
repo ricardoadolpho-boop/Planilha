@@ -44,6 +44,7 @@ const App: React.FC = () => {
   const [inspectedTicker, setInspectedTicker] = useState<string | null>(null);
   const [usdRate] = useState(5.45); 
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
+  const [hasAttemptedAutoRefresh, setHasAttemptedAutoRefresh] = useState(false);
   
   // State inicializa lendo do LocalStorage
   const [marketPrices, setMarketPrices] = useState<Record<string, MarketPrice>>(() => {
@@ -130,14 +131,29 @@ const App: React.FC = () => {
     }
   }, [tickersToUpdate, isUpdatingPrices]);
 
-  // Autoload inicial de preços se cache vazio
+  // Autoload inicial de preços - Lógica Protegida contra Loops
   useEffect(() => {
-    if (!isLoading && tickersToUpdate.length > 0 && Object.keys(marketPrices).length === 0) {
+    // Só tenta atualizar automaticamente se:
+    // 1. Dados carregaram (isLoading false)
+    // 2. Temos tickers na carteira
+    // 3. Ainda NÃO tentamos atualizar nesta sessão (hasAttemptedAutoRefresh false)
+    if (!isLoading && tickersToUpdate.length > 0 && !hasAttemptedAutoRefresh) {
+      
+      const doRefresh = async () => {
+         // Marca como tentado imediatamente para evitar múltiplas chamadas
+         setHasAttemptedAutoRefresh(true);
+         
+         // Se não temos preços em cache ou na memória, chama atualização
+         if (Object.keys(marketPrices).length === 0) {
+            await refreshPrices();
+         }
+      };
+
       // Pequeno delay para garantir que UI já montou
-      const timer = setTimeout(() => refreshPrices(), 1000);
+      const timer = setTimeout(doRefresh, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isLoading, tickersToUpdate.length]); 
+  }, [isLoading, tickersToUpdate.length, hasAttemptedAutoRefresh, marketPrices, refreshPrices]); 
 
   // Engine Calculation
   const engineData = useMemo(() => 
@@ -170,7 +186,7 @@ const App: React.FC = () => {
             <svg className="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
           </div>
           <h2 className="text-xl font-bold text-slate-800">Sem Conexão</h2>
-          <p className="text-slate-500 text-sm">Não foi possível carregar seus dados. Verifique sua internet.</p>
+          <p className="text-slate-500 text-sm">Não foi possível carregar seus dados (Permissão Negada ou Erro de Rede).</p>
           <button onClick={() => window.location.reload()} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700">Tentar Novamente</button>
         </div>
       </div>
