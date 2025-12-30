@@ -155,6 +155,24 @@ const App: React.FC = () => {
       </div>
     );
   }
+  
+  if (dbStatus === 'error') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="text-center space-y-4 bg-white p-8 rounded-2xl shadow-lg border border-rose-200">
+          <div className="mx-auto w-16 h-16 rounded-full bg-rose-100 flex items-center justify-center">
+            <svg className="w-8 h-8 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+          </div>
+          <h2 className="text-xl font-bold text-slate-800">Erro de Conexão</h2>
+          <p className="text-slate-500 font-medium text-sm max-w-sm">
+            Não foi possível conectar à base de dados para carregar sua carteira. 
+            Verifique sua conexão com a internet ou as permissões do Firebase. 
+            A aplicação tentará reconectar automaticamente.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Mobile Bottom Nav Component
   const MobileNav = () => (
