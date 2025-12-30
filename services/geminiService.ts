@@ -56,21 +56,28 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
       },
     });
 
-    const rawText = response.text;
-    const jsonData = JSON.parse(rawText || '{"prices": []}');
+    const rawText = response.text || '{"prices": []}';
+    const cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
     
-    // Extrair fontes para conformidade com Search Grounding
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-      ?.filter(chunk => chunk.web)
-      .map(chunk => ({
-        title: chunk.web?.title || "Fonte de Mercado",
-        uri: chunk.web?.uri || ""
-      })) || [];
+    try {
+      const jsonData = JSON.parse(cleanText);
+      
+      const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
+        ?.filter(chunk => chunk.web)
+        .map(chunk => ({
+          title: chunk.web?.title || "Fonte de Mercado",
+          uri: chunk.web?.uri || ""
+        })) || [];
 
-    return {
-      prices: jsonData.prices,
-      sources: sources
-    };
+      return {
+        prices: jsonData.prices,
+        sources: sources
+      };
+    } catch (parseError) {
+      console.error("Erro ao parsear JSON do Gemini:", parseError, "Texto recebido:", cleanText);
+      return null;
+    }
+
   } catch (error) {
     if (isQuotaError(error)) {
       console.warn("Gemini: Cota excedida ao buscar preços. Mantendo valores anteriores.");
