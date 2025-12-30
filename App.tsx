@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Transaction, AnnouncedDividend } from './types';
 import { calculateConsolidatedData } from './services/investmentEngine';
-import { fetchRealTimePrices, MarketPrice } from './services/geminiService';
+import { fetchRealTimePrices, MarketPrice, DEFAULT_ORACLE_URL } from './services/geminiService';
 import DashboardView from './components/DashboardView';
 import TransactionsView from './components/TransactionsView';
 import AssetDetailView from './components/AssetDetailView';
@@ -45,7 +45,7 @@ const App: React.FC = () => {
   const [usdRate] = useState(5.45); 
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [customApiUrl, setCustomApiUrl] = useState(() => localStorage.getItem('custom_api_url') || '');
+  const [customApiUrl, setCustomApiUrl] = useState(() => localStorage.getItem('custom_api_url') || DEFAULT_ORACLE_URL);
   
   const autoRefreshRef = useRef(false);
   
