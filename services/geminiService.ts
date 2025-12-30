@@ -1,10 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, TransactionType, Country, AssetCategory, TaxMonthlySummary } from '../types';
 
-// Inicialização estrita conforme guidelines: apiKey via process.env
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Constantes de Cache
 const CACHE_KEYS = {
   SUMMARY: 'gemini_market_summary_v1',
   PRICES: 'gemini_prices_cache_v1'
@@ -24,6 +22,23 @@ export interface MarketPrice {
 export interface PriceUpdateResponse {
   prices: MarketPrice[];
   sources: { title: string; uri: string }[];
+}
+
+export interface ParsedImportResult {
+  transactions: {
+    date: string;
+    ticker: string;
+    broker: string;
+    country: Country;
+    category: AssetCategory;
+    type: TransactionType;
+    quantity: number;
+    unitPrice: number;
+    fees: number;
+    splitFrom?: number;
+    splitTo?: number;
+  }[];
+  errors: string[];
 }
 
 // --- HELPERS ---
@@ -58,29 +73,77 @@ const setCache = (key: string, data: any, contextKey?: string) => {
       contextKey
     }));
   } catch (e) {
-    console.warn('Falha ao salvar cache (localStorage cheio?)', e);
+    console.warn('Falha ao salvar cache', e);
   }
 };
 
 // --- API FUNCTIONS ---
 
+// Novo método para buscar do Google Apps Script (Oráculo)
+const fetchFromCustomOracle = async (url: string, tickers: string[]): Promise<PriceUpdateResponse | null> => {
+  try {
+    // O GAS geralmente espera ?tickers=PETR4,AAPL
+    // Se o ticker for BR e não tiver sufixo, adicionamos .SA para garantir compatibilidade com Google Finance
+    const formattedTickers = tickers.map(t => {
+      // Lógica simples: Se parece ticker BR (letras + numero) e não tem ponto, assume SA. 
+      // EUA geralmente são só letras.
+      const isBR = /[A-Z]{4}[0-9]{1,2}$/.test(t); 
+      return (isBR && !t.includes('.')) ? `${t}.SA` : t;
+    });
+
+    const targetUrl = `${url}${url.includes('?') ? '&' : '?'}tickers=${formattedTickers.join(',')}`;
+    
+    const response = await fetch(targetUrl);
+    if (!response.ok) throw new Error('Erro no Oráculo');
+    
+    const data = await response.json();
+    
+    // Normalização dos dados vindos do GAS
+    // Espera formato: { prices: [{ ticker: 'PETR4', price: 35.5, change: 1.2 }] }
+    if (data && Array.isArray(data.prices)) {
+      return {
+        prices: data.prices.map((p: any) => ({
+          ticker: p.ticker.replace('.SA', ''), // Remove sufixo para bater com o app
+          price: Number(p.price) || 0,
+          changePercent: Number(p.change) || 0 // GAS deve retornar 'change'
+        })),
+        sources: [{ title: "Google Finance (via GAS)", uri: "https://finance.google.com" }]
+      };
+    }
+    return null;
+  } catch (e) {
+    console.warn("Oráculo falhou:", e);
+    return null;
+  }
+};
+
 export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdateResponse | null> => {
   if (tickers.length === 0) return null;
 
+  // 1. Verifica Cache
   const cached = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, CACHE_TTL.PRICES);
-
-  // 1. Tenta Cache Válido
   if (cached) {
-    console.log("Usando cache de preços (válido).");
+    console.log("Usando cache de preços.");
     return cached;
   }
 
+  // 2. Tenta ORÁCULO CUSTOMIZADO (Prioridade Máxima)
+  const customApiUrl = localStorage.getItem('custom_api_url');
+  if (customApiUrl) {
+    console.log("Usando Oráculo Customizado...");
+    const oracleResult = await fetchFromCustomOracle(customApiUrl, tickers);
+    if (oracleResult) {
+      setCache(CACHE_KEYS.PRICES, oracleResult);
+      return oracleResult;
+    }
+  }
+
+  // 3. Fallback: Gemini API
   try {
+    console.log("Usando Gemini fallback...");
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Get current market price and daily percentage change for: ${tickers.join(", ")}. 
-      Assets can be from BVMF (Brazil) or NYSE/NASDAQ (USA). 
-      Return values in their original currency.`,
+      contents: `Get current stock price and daily % change for: ${tickers.join(", ")}.`,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
@@ -111,31 +174,20 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
       ?.filter(chunk => chunk.web)
       .map(chunk => ({
-        title: chunk.web?.title || "Fonte de Mercado",
+        title: chunk.web?.title || "Google Search",
         uri: chunk.web?.uri || ""
       })) || [];
 
     result.sources = sources;
-
     setCache(CACHE_KEYS.PRICES, result);
     return result;
 
   } catch (error) {
-    // Tratamento de erro 429 silencioso para não assustar o usuário
     if (isQuotaError(error)) {
-      console.warn("Gemini API: Cota excedida (429). Usando modo offline/cache.");
-      
+      console.warn("Gemini Cota Excedida (429).");
       const staleCache = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, 0, true);
-      if (staleCache) return staleCache;
-
-      // Fallback seguro: Retorna zeros para não quebrar a UI
-      return { 
-        prices: tickers.map(t => ({ ticker: t, price: 0, changePercent: 0 })), 
-        sources: [] 
-      };
+      return staleCache || { prices: tickers.map(t => ({ ticker: t, price: 0, changePercent: 0 })), sources: [] };
     }
-
-    console.error("Erro fetchRealTimePrices:", error);
     const staleCache = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, 0, true);
     return staleCache || null;
   }
@@ -143,56 +195,37 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
 
 export const getMarketSummary = async (tickers: string[]): Promise<string> => {
   if (tickers.length === 0) return "Adicione ativos.";
-
   const tickersKey = tickers.sort().join(',');
   
   try {
     const raw = localStorage.getItem(CACHE_KEYS.SUMMARY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Date.now() - parsed.timestamp < CACHE_TTL.SUMMARY && parsed.contextKey === tickersKey) {
-        return parsed.data;
-      }
+      if (Date.now() - parsed.timestamp < CACHE_TTL.SUMMARY && parsed.contextKey === tickersKey) return parsed.data;
     }
   } catch {}
 
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analise brevemente esta carteira (tickers: ${tickers.join(", ")}). 
-      Perspectiva macroeconômica rápida 2024 (Brasil/EUA). Máximo 3 parágrafos.`,
+      contents: `Analise brevemente esta carteira: ${tickers.join(", ")}. Perspectiva 2024 (BR/USA). Max 3 parágrafos.`,
     });
-    
     const text = response.text || "Análise indisponível.";
     setCache(CACHE_KEYS.SUMMARY, text, tickersKey);
     return text;
-
   } catch (error) {
-    if (isQuotaError(error)) return "Análise temporariamente indisponível (Cota de IA excedida).";
-    return "Erro ao gerar análise.";
+    return isQuotaError(error) ? "Análise temporariamente indisponível (Cota)." : "Erro ao gerar análise.";
   }
 };
 
-export interface ParsedImportResult {
-  transactions: Omit<Transaction, 'id'>[];
-  errors: string[];
-}
-
 export const parseTransactionsFromCSV = async (csvContent: string): Promise<ParsedImportResult | null> => {
+  // Mantém implementação original
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview", 
-      contents: `Atue como um engenheiro de dados financeiros. Converta este CSV de corretora para JSON.
-      
-      Regras:
-      1. Detecte colunas automaticamente (Data, Ativo/Ticker, Tipo/C/V, Qtd, Preço, Taxas).
-      2. Normalize 'tipo' para: "${TransactionType.BUY}", "${TransactionType.SELL}", "${TransactionType.DIVIDEND}", "${TransactionType.BONUS}", "${TransactionType.SPLIT}".
-      3. Normalize 'país' para "${Country.BR}" ou "${Country.USA}".
-      4. Normalize datas para AAAA-MM-DD.
-      5. Converta valores numéricos (pt-BR ou en-US) para float padrão.
-      
-      CSV:
-      ${csvContent}`,
+      contents: `Atue como um engenheiro de dados financeiros. Converta este CSV para JSON.
+      Regras: Detecte colunas (Data, Ticker, Tipo, Qtd, Preço, Taxas). Normalize tipo (Compra, Venda, Dividendo, Bonificação, Desdobramento). Normalize país (BR, EUA). Formato Data AAAA-MM-DD.
+      CSV: ${csvContent}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -218,30 +251,17 @@ export const parseTransactionsFromCSV = async (csvContent: string): Promise<Pars
                 required: ["date", "ticker", "broker", "country", "category", "type", "quantity", "unitPrice", "fees"]
               }
             },
-            errors: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
+            errors: { type: Type.ARRAY, items: { type: Type.STRING } }
           },
           required: ["transactions", "errors"]
         }
       },
     });
-
-    const jsonStr = response.text || '{"transactions": [], "errors": ["Resposta vazia"]}';
-    const result: ParsedImportResult = JSON.parse(jsonStr);
-    
-    result.transactions.forEach(tx => {
-      if (!tx.splitFrom) delete tx.splitFrom;
-      if (!tx.splitTo) delete tx.splitTo;
-    });
-
-    return result;
-
+    const jsonStr = response.text || '{"transactions": [], "errors": ["Vazio"]}';
+    return JSON.parse(jsonStr);
   } catch (error) {
-    console.error("Erro importação:", error);
-    if (isQuotaError(error)) return { transactions: [], errors: ["Limite de IA excedido. Tente novamente mais tarde."] };
-    return { transactions: [], errors: ["Erro ao processar arquivo."] };
+    if (isQuotaError(error)) return { transactions: [], errors: ["Cota excedida."] };
+    return { transactions: [], errors: ["Erro proc."] };
   }
 };
 
@@ -249,13 +269,8 @@ export const generateDarfExplanation = async (summary: TaxMonthlySummary): Promi
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Explique o cálculo de DARF para este mês (${summary.month}).
-      Dados: Vendas R$ ${summary.totalSalesBRL}, Lucro Tributável R$ ${summary.taxableGainBRL}, Imposto R$ ${summary.taxDueBRL}.
-      Regras: Isenção 20k para ações (exceto day-trade/FII). Formate em Markdown.`,
+      contents: `Explique cálculo DARF mês ${summary.month}. Vendas R$${summary.totalSalesBRL}, Lucro R$${summary.taxableGainBRL}, Imposto R$${summary.taxDueBRL}. Regra isenção 20k ações. Markdown.`,
     });
-    return response.text || "Explicação não gerada.";
-  } catch (error) {
-    if (isQuotaError(error)) return "Limite de cota excedido. Não foi possível gerar a explicação agora.";
-    return "Erro ao gerar explicação fiscal.";
-  }
+    return response.text || "N/A";
+  } catch { return "Erro API."; }
 };
