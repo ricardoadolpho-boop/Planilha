@@ -95,12 +95,13 @@ export interface HistoricalPoint {
   invested: number;
 }
 
-// NOVO: Estrutura para Proventos Anunciados (A Receber)
+// Proventos Anunciados com tipo para cálculo de imposto
 export interface AnnouncedDividend {
   id: string;
   ticker: string;
   country: Country;
   exDate: string; // Data "Com"
   paymentDate: string; // Data de Pagamento
-  amountPerShare: number; // Valor por cota/ação
+  amountPerShare: number; // Valor BRUTO por cota/ação
+  dividendType: 'DIVIDEND' | 'JCP'; // Tipo para regras fiscais
 }
