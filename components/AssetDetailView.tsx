@@ -9,9 +9,10 @@ interface Props {
   onBack: () => void;
   sellMatches: Record<string, MatchedLot[]>;
   marketPrice: MarketPrice | undefined;
+  usdRate: number;
 }
 
-const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBack, sellMatches, marketPrice }) => {
+const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBack, sellMatches, marketPrice, usdRate }) => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   
   const assetTx = transactions
@@ -33,6 +34,10 @@ const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBa
     if (isUS) {
       return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
     }
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
+  
+  const formatBRL = (val: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
@@ -79,10 +84,16 @@ const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBa
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Preço Atual vs Médio</p>
-          <div className="flex items-end gap-2">
-             <h3 className="text-xl font-bold text-slate-900">{formatValue(currentVal)}</h3>
-             <span className="text-xs text-slate-400 mb-1 line-through decoration-rose-400">{formatValue(position?.averagePrice || 0)}</span>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Preço Atual / Médio</p>
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-xl font-bold text-slate-900">
+              {formatValue(currentVal)}
+              {isUS && <span className="text-sm font-medium text-slate-400">({formatBRL(currentVal * usdRate)})</span>}
+            </h3>
+            <span className="text-slate-400">/</span>
+            <span className="text-base text-slate-500">
+              {formatValue(position?.averagePrice || 0)}
+            </span>
           </div>
           <p className="text-[10px] text-slate-400 mt-1">Cotação Atual vs PM</p>
         </div>
@@ -114,6 +125,7 @@ const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBa
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Posição Total</p>
           <h3 className="text-xl font-bold text-indigo-600">
             {formatValue( (position?.totalQuantity || 0) * currentVal )}
+            {isUS && <span className="text-base font-medium text-slate-400 ml-2">({formatBRL( ((position?.totalQuantity || 0) * currentVal) * usdRate )})</span>}
           </h3>
           <p className="text-xs text-slate-500 mt-1">{position?.totalQuantity.toFixed(2)} unidades</p>
         </div>
