@@ -86,6 +86,9 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
                           </div>
                           <div className="text-right">
                              <span className="block font-bold text-slate-900">{formatCurrency(equity, pos.country)}</span>
+                             {pos.country === Country.USA && (
+                               <span className="block text-xs text-slate-500">{formatBRL(equity * usdRate)}</span>
+                             )}
                              <span className={`text-xs font-bold ${profitPct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
                              </span>
@@ -150,8 +153,11 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
                             <span className="text-[10px] font-bold text-slate-400">{weightInBroker.toFixed(1)}%</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-right font-bold text-slate-900">
-                           {formatCurrency(equityInOriginalCurrency, pos.country)}
+                        <td className="px-6 py-4 text-right">
+                           <div className="font-bold text-slate-900">{formatCurrency(equityInOriginalCurrency, pos.country)}</div>
+                           {pos.country === Country.USA && (
+                            <div className="text-xs text-slate-500 font-medium">{formatBRL(equityInOriginalCurrency * usdRate)}</div>
+                           )}
                         </td>
                       </tr>
                     );
