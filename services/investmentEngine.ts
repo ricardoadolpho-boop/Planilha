@@ -118,8 +118,21 @@ export const calculateConsolidatedData = (
 
       realizedCashBRL += realizedGain * (tx.country === Country.USA ? usdRate : 1);
       totalInvestedBRL -= totalCostBasisOfSoldUnits * (tx.country === Country.USA ? usdRate : 1);
+      
+      // --- INÍCIO DA CORREÇÃO CRÍTICA ---
       pos.totalQuantity -= tx.quantity;
-      pos.totalInvested = pos.totalQuantity * pos.averagePrice;
+      pos.totalInvested -= totalCostBasisOfSoldUnits;
+
+      // Zera para evitar imprecisões de ponto flutuante se a posição for totalmente vendida
+      if (pos.totalQuantity < 0.00001) {
+          pos.totalQuantity = 0;
+          pos.totalInvested = 0;
+          pos.averagePrice = 0;
+      } else {
+          pos.averagePrice = pos.totalInvested / pos.totalQuantity;
+      }
+      // --- FIM DA CORREÇÃO CRÍTICA ---
+
       gainsByMonth[monthKey] = (gainsByMonth[monthKey] || 0) + realizedGain;
     } else if (tx.type === TransactionType.DIVIDEND) {
       const dividendAmount = (tx.quantity * tx.unitPrice) - tx.fees;
