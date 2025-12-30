@@ -10,9 +10,10 @@ interface Props {
   sellMatches: Record<string, MatchedLot[]>;
   marketPrice: MarketPrice | undefined;
   usdRate: number;
+  onManualUpdate: (ticker: string, price: number) => void;
 }
 
-const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBack, sellMatches, marketPrice, usdRate }) => {
+const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBack, sellMatches, marketPrice, usdRate, onManualUpdate }) => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   
   // Memoize transaction list to prevent re-sorting on every render
@@ -50,6 +51,16 @@ const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBa
       [TransactionType.REDEMPTION]: 'bg-lime-100 text-lime-700'
     };
     return styles[type] || 'bg-slate-100 text-slate-700';
+  };
+
+  const handleEditPrice = () => {
+    const newPriceStr = window.prompt(`Digite o preço atual para ${ticker}:`, currentVal.toString());
+    if (newPriceStr) {
+      const newPrice = parseFloat(newPriceStr.replace(',', '.'));
+      if (!isNaN(newPrice)) {
+        onManualUpdate(ticker, newPrice);
+      }
+    }
   };
 
   // --- Render Helpers ---
@@ -99,11 +110,14 @@ const AssetDetailView: React.FC<Props> = ({ ticker, transactions, position, onBa
           </>
         ) : (
           <>
-            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative group">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Preço Atual / Médio</p>
               <div className="flex items-baseline gap-2">
                 <h3 className="text-xl font-bold text-slate-900">{formatCurrency(currentVal)}</h3>
                 {isUS && <span className="text-sm font-medium text-slate-400">({formatBRL(currentVal * usdRate)})</span>}
+                <button onClick={handleEditPrice} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-indigo-600" title="Editar preço manualmente">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                </button>
               </div>
               <p className="text-xs text-slate-500 mt-1">PM: {formatCurrency(position?.averagePrice || 0)}</p>
             </div>
