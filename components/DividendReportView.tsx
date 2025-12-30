@@ -23,6 +23,7 @@ const DividendReportView: React.FC<Props> = ({ transactions, usdRate, announcedD
     exDate: new Date().toISOString().split('T')[0],
     paymentDate: new Date().toISOString().split('T')[0],
     amountPerShare: 0,
+    dividendType: 'DIVIDEND' as 'DIVIDEND' | 'JCP',
   };
   const [formData, setFormData] = useState<Omit<AnnouncedDividend, 'id'>>(initialFormState);
 
@@ -31,46 +32,53 @@ const DividendReportView: React.FC<Props> = ({ transactions, usdRate, announcedD
   const formatBRL = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   // --- CÁLCULO PROVENTOS RECEBIDOS ---
-  const { byTicker, totalBRL, totalUSD, byMonth } = React.useMemo(() => {
-    const groupedByTicker: Record<string, { total: number; country: Country; entries: DividendEntry[] }> = {};
+  const { totalBRL, totalUSD, byMonth } = React.useMemo(() => {
     const groupedByMonth: Record<string, number> = {};
     let totalBRL = 0;
     let totalUSD = 0;
 
     dividendTransactions.forEach(tx => {
       const amount = tx.quantity * tx.unitPrice - tx.fees;
-      if (!groupedByTicker[tx.ticker]) {
-        groupedByTicker[tx.ticker] = { total: 0, country: tx.country, entries: [] };
-      }
-      groupedByTicker[tx.ticker].total += amount;
-      groupedByTicker[tx.ticker].entries.push({ date: tx.date, amount });
       if (tx.country === Country.BR) totalBRL += amount; else totalUSD += amount;
       const monthKey = tx.date.substring(0, 7);
       const amountInBRL = tx.country === Country.BR ? amount : amount * usdRate;
       groupedByMonth[monthKey] = (groupedByMonth[monthKey] || 0) + amountInBRL;
     });
 
-    Object.values(groupedByTicker).forEach(g => g.entries.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     const byMonthArray = Object.entries(groupedByMonth).map(([m,a]) => ({ month: m, amount: a })).sort((a,b) => b.month.localeCompare(a.month));
-
-    return { 
-      byTicker: Object.entries(groupedByTicker).sort((a,b) => b[1].total - a[1].total), 
-      totalBRL, totalUSD, byMonth: byMonthArray
-    };
+    return { totalBRL, totalUSD, byMonth: byMonthArray };
   }, [dividendTransactions, usdRate]);
   
-  // --- CÁLCULO PROVENTOS A RECEBER (PREVISÃO) ---
+  // --- CÁLCULO PROVENTOS A RECEBER (PREVISÃO LÍQUIDA) ---
   const { forecast, totalForecastBRL } = React.useMemo(() => {
-    let totalForecastBRL = 0;
+    let totalForecastNetBRL = 0;
+    
     const forecastWithDetails = announcedDividends.map(div => {
       const position = positions.find(p => p.ticker === div.ticker);
-      const quantityOnDate = position?.totalQuantity || 0; // Simplificação: usa a quantidade atual.
-      const amountToReceive = quantityOnDate * div.amountPerShare;
-      totalForecastBRL += div.country === Country.BR ? amountToReceive : amountToReceive * usdRate;
-      return { ...div, quantityOnDate, amountToReceive };
+      const quantityOnExDate = position?.totalQuantity || 0; 
+      
+      const grossAmount = quantityOnExDate * div.amountPerShare;
+      let taxAmount = 0;
+      let taxRate = 0;
+
+      if (div.country === Country.BR) {
+        if (div.dividendType === 'JCP') {
+          taxRate = 0.15; // 15% IR na fonte para JCP
+          taxAmount = grossAmount * taxRate;
+        }
+      } else if (div.country === Country.USA) {
+        taxRate = 0.30; // 30% US withholding tax para residentes fiscais no Brasil
+        taxAmount = grossAmount * taxRate;
+      }
+
+      const netAmount = grossAmount - taxAmount;
+      const netAmountInBRL = div.country === Country.USA ? netAmount * usdRate : netAmount;
+      totalForecastNetBRL += netAmountInBRL;
+
+      return { ...div, quantityOnExDate, grossAmount, taxAmount, taxRate, netAmount };
     }).sort((a,b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime());
 
-    return { forecast: forecastWithDetails, totalForecastBRL };
+    return { forecast: forecastWithDetails, totalForecastBRL: totalForecastNetBRL };
   }, [announcedDividends, positions, usdRate]);
 
   const totalDividendsInBRL = totalBRL + (totalUSD * usdRate);
@@ -94,7 +102,7 @@ const DividendReportView: React.FC<Props> = ({ transactions, usdRate, announcedD
         </div>
         <div className="grid grid-cols-2 gap-4 w-full md:w-auto text-center md:text-right">
             <div className="bg-amber-400/30 px-4 py-2 rounded-xl border border-amber-300/30">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-200">A Receber (R$)</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-200">A Receber (LÍQUIDO)</p>
                 <p className="text-xl font-black">{formatBRL(totalForecastBRL)}</p>
             </div>
             <div className="bg-amber-400/30 px-4 py-2 rounded-xl border border-amber-300/30">
@@ -104,51 +112,60 @@ const DividendReportView: React.FC<Props> = ({ transactions, usdRate, announcedD
         </div>
       </div>
 
-      {/* SEÇÃO: FLUXO DE CAIXA FUTURO (PREVISÃO) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold text-slate-800">Fluxo de Caixa Futuro (Proventos a Receber)</h3>
+            <h3 className="text-lg font-bold text-slate-800">Fluxo de Caixa Futuro (Líquido de Impostos)</h3>
             <p className="text-xs text-slate-400 uppercase tracking-wider">Previsão com base nos anúncios e na sua posição atual.</p>
           </div>
-          <button 
-            onClick={() => setShowForm(!showForm)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 font-bold text-xs flex items-center gap-2 shadow-lg shadow-indigo-500/20"
-          >
-            {showForm ? 'Fechar' : '+ Lançar Previsão'}
-          </button>
+          <button onClick={() => setShowForm(!showForm)} className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 font-bold text-xs flex items-center gap-2 shadow-lg shadow-indigo-500/20">{showForm ? 'Fechar' : '+ Lançar Previsão'}</button>
         </div>
         
         {showForm && (
           <form onSubmit={handleSubmit} className="p-6 bg-slate-50 border-b border-slate-100">
-             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
                <input type="text" placeholder="Ticker" required value={formData.ticker} onChange={e => setFormData({...formData, ticker: e.target.value.toUpperCase()})} className="w-full p-2 bg-white border border-slate-300 rounded-lg text-slate-800 font-bold outline-none focus:ring-1 focus:ring-indigo-500" />
                <select value={formData.country} onChange={e => setFormData({...formData, country: e.target.value as Country})} className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500">
                   <option value={Country.BR}>🇧🇷 Brasil</option>
                   <option value={Country.USA}>🇺🇸 EUA</option>
                </select>
+               {formData.country === Country.BR ? (
+                 <select value={formData.dividendType} onChange={e => setFormData({...formData, dividendType: e.target.value as 'DIVIDEND' | 'JCP'})} className="w-full p-2 bg-white border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-indigo-500">
+                    <option value='DIVIDEND'>Dividendo (Isento)</option>
+                    <option value='JCP'>JCP (15% IR)</option>
+                 </select>
+               ) : (
+                <div className="flex items-center justify-center bg-slate-100 rounded-lg text-xs text-slate-400 font-bold border border-slate-200 h-full">Padrão EUA (30%)</div>
+               )}
                <input type="date" title="Data Com" required value={formData.exDate} onChange={e => setFormData({...formData, exDate: e.target.value})} className="w-full p-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500" />
                <input type="date" title="Data de Pagamento" required value={formData.paymentDate} onChange={e => setFormData({...formData, paymentDate: e.target.value})} className="w-full p-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500" />
-               <input type="number" step="any" placeholder="Valor/Cota" required value={formData.amountPerShare} onChange={e => setFormData({...formData, amountPerShare: parseFloat(e.target.value) || 0})} className="w-full p-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500" />
+               <input type="number" step="any" placeholder="Valor Bruto/Cota" required value={formData.amountPerShare} onChange={e => setFormData({...formData, amountPerShare: parseFloat(e.target.value) || 0})} className="w-full p-2 bg-white border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500" />
              </div>
-             <button type="submit" className="w-full mt-4 bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-700">Adicionar</button>
+             <button type="submit" className="w-full mt-4 bg-emerald-600 text-white py-2 rounded-lg font-bold hover:bg-emerald-700">Adicionar Previsão</button>
           </form>
         )}
 
-        <div className="p-4 md:p-6 space-y-2">
+        <div className="p-4 md:p-6 space-y-3">
             {forecast.length > 0 ? forecast.map(f => (
-                <div key={f.id} className="grid grid-cols-2 md:grid-cols-4 items-center gap-4 py-3 px-4 bg-slate-50 rounded-lg hover:bg-white border border-transparent hover:border-slate-200">
+                <div key={f.id} className="grid grid-cols-2 md:grid-cols-4 items-center gap-4 py-4 px-4 bg-slate-50/70 rounded-xl border border-slate-100 hover:bg-white hover:border-slate-200">
                     <div>
-                        <p className="font-black text-slate-800">{f.ticker}</p>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold">Pagamento em {new Date(f.paymentDate + 'T00:00:00').toLocaleDateString()}</p>
+                        <p className="font-black text-slate-800 text-lg">{f.ticker}</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold">PGTO: {new Date(f.paymentDate + 'T00:00:00').toLocaleDateString()}</p>
+                        <span className={`mt-1 text-[9px] px-1.5 py-0.5 rounded font-bold inline-block ${f.taxRate > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                           {f.country === Country.BR ? f.dividendType : 'DIVIDEND'} ({ (f.taxRate * 100).toFixed(0) }% IR)
+                        </span>
                     </div>
-                    <div className="text-right md:text-left">
-                        <p className="text-xs text-slate-500">{f.quantityOnDate.toFixed(2)} cotas</p>
-                        <p className="text-xs text-slate-500">x {formatCurrency(f.amountPerShare, f.country)}</p>
+                    <div className="text-xs text-slate-500 font-mono text-right md:text-left">
+                        <p>{f.quantityOnExDate.toFixed(2)} cotas</p>
+                        <p>x {formatCurrency(f.amountPerShare, f.country)}</p>
+                        <p className="border-t border-slate-200 mt-1 pt-1 font-bold text-slate-600">
+                           = {formatCurrency(f.grossAmount, f.country)} (Bruto)
+                        </p>
                     </div>
                     <div className="text-left">
-                        <p className="font-bold text-emerald-600 text-lg">{formatCurrency(f.amountToReceive, f.country)}</p>
-                        {f.country === Country.USA && <p className="text-xs text-slate-400">~{formatBRL(f.amountToReceive * usdRate)}</p>}
+                        <p className="font-bold text-emerald-600 text-xl">{formatCurrency(f.netAmount, f.country)}</p>
+                        <p className="text-[10px] text-rose-500 font-bold">Imposto: -{formatCurrency(f.taxAmount, f.country)}</p>
+                        {f.country === Country.USA && <p className="text-xs text-slate-400 mt-1">~{formatBRL(f.netAmount * usdRate)}</p>}
                     </div>
                     <div className="text-right">
                         <button onClick={() => onDeleteAnnouncedDividend(f.id)} className="text-slate-300 hover:text-rose-500 p-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
@@ -158,7 +175,6 @@ const DividendReportView: React.FC<Props> = ({ transactions, usdRate, announcedD
         </div>
       </div>
 
-      {/* SEÇÃO: HISTÓRICO DE PROVENTOS RECEBIDOS */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
         <h3 className="text-lg font-bold text-slate-800 mb-1">Histórico de Proventos Recebidos</h3>
         <p className="text-xs text-slate-400 mb-6 uppercase tracking-wider">Consolidado por Mês (em R$)</p>
