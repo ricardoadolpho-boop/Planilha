@@ -254,13 +254,13 @@ const App: React.FC = () => {
         <div className="mt-6 pt-6 border-t border-slate-800">
            <div className="flex items-center gap-3 px-2">
               <div className="relative">
-                 <div className={`w-3 h-3 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500' : dbStatus === 'error' ? 'bg-rose-500' : 'bg-amber-500'}`}></div>
+                 <div className={`w-3 h-3 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
                  {dbStatus === 'connected' && <div className="absolute top-0 left-0 w-3 h-3 rounded-full bg-emerald-500 animate-ping"></div>}
               </div>
               <div className="flex flex-col">
                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cloud Sync</span>
                  <span className={`text-xs font-bold ${dbStatus === 'connected' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                    {dbStatus === 'connected' ? 'Ativo' : dbStatus === 'error' ? 'Erro' : 'Conectando'}
+                    {dbStatus === 'connected' ? 'Ativo' : 'Conectando'}
                  </span>
               </div>
            </div>
