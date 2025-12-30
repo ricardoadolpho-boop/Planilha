@@ -32,9 +32,10 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Forneça o preço de mercado atual e a variação percentual do dia para os seguintes ativos: ${tickers.join(", ")}. 
-      Considere ativos brasileiros (BVMF) e americanos (NYSE/NASDAQ). 
-      Retorne os valores na moeda original de cada ativo.`,
+      contents: `Forneça o preço de mercado atual e a variação percentual do dia para os seguintes ativos de bolsa de valores: ${tickers.join(", ")}. 
+      Considere ativos brasileiros (B3/BVMF) e americanos (NYSE/NASDAQ). 
+      Retorne os valores na moeda original de cada ativo.
+      IMPORTANTE: No objeto JSON de resposta, a propriedade 'ticker' DEVE corresponder EXATAMENTE ao ticker fornecido na lista de entrada. Não adicione sufixos como ".SA" ou altere a capitalização.`,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
