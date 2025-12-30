@@ -30,15 +30,29 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
       {Object.entries(brokersMap).map(([broker, brokerPositions]) => {
         const castedPositions = brokerPositions as Position[];
         
-        const brokerTotalInvestedBRL = castedPositions.reduce((acc, pos) => {
-          const invested = pos.totalInvested;
-          return acc + (pos.country === Country.BR ? invested : invested * usdRate);
-        }, 0);
+        // Calcular totais de patrimônio e dividendos por moeda e consolidado
+        let brokerTotalEquityBRL = 0;
+        let brokerTotalEquityUSD = 0;
+        let brokerTotalDividendsBRL_consolidated = 0;
+        let brokerTotalDividendsUSD = 0;
 
-        const brokerTotalDividendsBRL = castedPositions.reduce((acc, pos) => {
-          const dividends = pos.totalDividends;
-          return acc + (pos.country === Country.BR ? dividends : dividends * usdRate);
-        }, 0);
+        castedPositions.forEach(pos => {
+            const marketData = marketPrices[pos.ticker];
+            const currentPrice = marketData?.price || pos.averagePrice;
+            const equity = pos.totalQuantity * currentPrice;
+            const dividends = pos.totalDividends;
+
+            if (pos.country === Country.USA) {
+                brokerTotalEquityUSD += equity;
+                brokerTotalDividendsUSD += dividends;
+                brokerTotalEquityBRL += equity * usdRate;
+                brokerTotalDividendsBRL_consolidated += dividends * usdRate;
+            } else {
+                brokerTotalEquityBRL += equity;
+                brokerTotalDividendsBRL_consolidated += dividends;
+            }
+        });
+
 
         return (
           <div key={broker} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -57,11 +71,17 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
               <div className="grid grid-cols-2 md:flex gap-4 md:gap-8 w-full md:w-auto border-t md:border-t-0 border-slate-800 pt-4 md:pt-0">
                 <div className="min-w-[100px]">
                   <p className="text-slate-400 text-[9px] font-bold uppercase mb-1">Total (R$)</p>
-                  <p className="text-white font-black text-base md:text-lg">{formatBRL(brokerTotalInvestedBRL)}</p>
+                  <p className="text-white font-black text-base md:text-lg">{formatBRL(brokerTotalEquityBRL)}</p>
                 </div>
+                {brokerTotalEquityUSD > 0 && (
+                  <div className="min-w-[100px]">
+                    <p className="text-slate-400 text-[9px] font-bold uppercase mb-1">Total (US$)</p>
+                    <p className="text-white font-black text-base md:text-lg">{formatCurrency(brokerTotalEquityUSD, Country.USA)}</p>
+                  </div>
+                )}
                 <div className="min-w-[100px]">
                   <p className="text-slate-400 text-[9px] font-bold uppercase mb-1">Divs (R$)</p>
-                  <p className="text-amber-500 font-black text-base md:text-lg">{formatBRL(brokerTotalDividendsBRL)}</p>
+                  <p className="text-amber-500 font-black text-base md:text-lg">{formatBRL(brokerTotalDividendsBRL_consolidated)}</p>
                 </div>
               </div>
             </div>
@@ -73,9 +93,11 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
                   const currentPrice = marketData?.price || pos.averagePrice;
                   const profitPct = pos.averagePrice > 0 ? ((currentPrice - pos.averagePrice) / pos.averagePrice) * 100 : 0;
                   const equity = pos.totalQuantity * currentPrice;
+                  const equityInBRL = pos.country === Country.USA ? equity * usdRate : equity;
+                  const weightInBroker = brokerTotalEquityBRL > 0 ? (equityInBRL / brokerTotalEquityBRL) * 100 : 0;
 
                   return (
-                    <div key={idx} className="p-4 flex flex-col gap-2">
+                    <div key={idx} className="p-4 flex flex-col gap-3">
                        <div className="flex justify-between items-start">
                           <div>
                             <div className="flex items-center gap-2">
@@ -94,9 +116,15 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
                              </span>
                           </div>
                        </div>
-                       <div className="flex justify-between items-center text-xs mt-1 bg-slate-50 p-2 rounded-lg">
+                       <div className="flex justify-between items-center text-xs bg-slate-50 p-2 rounded-lg">
                           <span className="text-slate-500">PM: <span className="font-medium text-slate-700">{formatCurrency(pos.averagePrice, pos.country)}</span></span>
                           <span className="text-slate-500">Atual: <span className="font-medium text-slate-700">{formatCurrency(currentPrice, pos.country)}</span></span>
+                       </div>
+                       <div className="flex items-center gap-2">
+                         <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                           <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${weightInBroker}%` }}></div>
+                         </div>
+                         <span className="text-[10px] font-bold text-slate-400">{weightInBroker.toFixed(1)}%</span>
                        </div>
                     </div>
                   )
@@ -123,8 +151,8 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
                     const currentPrice = marketData?.price || pos.averagePrice;
                     const profitPct = pos.averagePrice > 0 ? ((currentPrice - pos.averagePrice) / pos.averagePrice) * 100 : 0;
                     const equityInOriginalCurrency = pos.totalQuantity * currentPrice;
-                    const investedBRL = pos.country === Country.BR ? pos.totalInvested : pos.totalInvested * usdRate;
-                    const weightInBroker = brokerTotalInvestedBRL > 0 ? (investedBRL / brokerTotalInvestedBRL) * 100 : 0;
+                    const equityInBRL = pos.country === Country.USA ? equityInOriginalCurrency * usdRate : equityInOriginalCurrency;
+                    const weightInBroker = brokerTotalEquityBRL > 0 ? (equityInBRL / brokerTotalEquityBRL) * 100 : 0;
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
