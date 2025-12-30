@@ -283,6 +283,7 @@ const App: React.FC = () => {
                 onBack={() => setInspectedTicker(null)}
                 sellMatches={sellMatches}
                 marketPrice={marketPrices[inspectedTicker]}
+                usdRate={usdRate}
               />
             ) : (
               <DashboardView 
