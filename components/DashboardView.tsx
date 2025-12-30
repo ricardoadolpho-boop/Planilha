@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, AreaChart, Area } from 'recharts';
 import { Position, MonthlyRealizedGain, Country, AssetCategory, HistoricalPoint } from '../types';
@@ -367,7 +368,7 @@ const DashboardView: React.FC<Props> = ({ positions, realizedGains, historicalEq
                   <p className="text-[10px] text-slate-500">com ganho de capital</p>
                 </div>
                 <div className="text-right">
-                   <p className="text-xs font-bold text-slate-600">Isenção 20k Utilizada</p>
+                   <p className="text-xs font-bold text-slate-600">Isenção &lt; R$ 20k Utilizada</p>
                    <div className="w-24 h-1.5 bg-slate-100 rounded-full mt-1">
                       <div className="h-full bg-emerald-500 rounded-full" style={{width: '35%'}}></div>
                    </div>
