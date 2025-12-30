@@ -204,7 +204,6 @@ export const calculateConsolidatedData = (
     
     // Calcula Equity Total neste dia
     // Equity = (Caixa Gerado/Lucro Realizado) + (Valor de Mercado das Posições Atuais)
-    let currentEquityValueBRL = accumulatedRealizedGainBRL + totalInvestedBRL; // Base + Lucro Realizado
     
     // Ajuste Mark-to-Market: Recalcula valor das posições com preço conhecido no momento da tx
     let marketValueBRL = 0;
@@ -217,20 +216,7 @@ export const calculateConsolidatedData = (
     });
 
     // O patrimônio é: O que realizei de lucro (caixa) + O que tenho investido hoje (Investido Original) + (Valor Mercado - Investido Original = Lucro Não Realizado)
-    // Simplificando: Equity = accumulatedRealizedGainBRL + marketValueBRL? 
-    // Não exatamente, accumulatedRealizedGainBRL rastreia apenas o DELTA.
-    // Vamos usar a fórmula: Investido Atual + Lucro Realizado Acumulado + Lucro Não Realizado Atual
-    const unrealizedGainBRL = marketValueBRL - totalInvestedBRL;
-    const totalEquity = totalInvestedBRL + accumulatedRealizedGainBRL + unrealizedGainBRL;
-
-    // Simplificação robusta: Historical Equity = Market Value das Posições + Cash/Lucro Realizado retirado?
-    // Para simplificar neste modelo sem conta caixa: Equity = Market Value das Posições Atuais.
-    // Mas isso ignoraria dividendos e vendas com lucro que viraram caixa.
-    // Vamos usar: Market Value Atual + Caixa Acumulado (Dividendos + Vendas) - Reinvestimentos?
-    // A abordagem mais visualmente agradável para "Patrimônio Total" é (Posições Atuais * Preço) + (Caixa Livre gerado pelo sistema).
-    // Como não rastreamos saques, assumimos que dividendos/vendas ficam no sistema.
-    
-    // Recalculo final para o gráfico:
+    // Simplificando para visualização
     const equityPoint = marketValueBRL + accumulatedRealizedGainBRL; 
 
     // Apenas adiciona ponto se for uma data nova ou última transação do dia
