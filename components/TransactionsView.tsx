@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Transaction, TransactionType, Country, AssetCategory } from '../types';
+import { parseTransactionsFromCSV, ParsedImportResult } from '../services/geminiService';
 
 interface Props {
   transactions: Transaction[];
@@ -11,12 +12,16 @@ interface Props {
 
 const TransactionsView: React.FC<Props> = ({ transactions, onAdd, onBulkAdd, onUpdate, onDelete }) => {
   const [showForm, setShowForm] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-  const [importErrors, setImportErrors] = useState<string[]>([]);
   const [tickerSearch, setTickerSearch] = useState('');
   const [countryFilter, setCountryFilter] = useState<'Todos' | Country>('Todos');
   const [typeFilter, setTypeFilter] = useState<'Todos' | TransactionType>('Todos');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Estados para o novo fluxo de importação com IA
+  const [isParsing, setIsParsing] = useState(false);
+  const [parsedData, setParsedData] = useState<ParsedImportResult | null>(null);
+  const [modalTab, setModalTab] = useState<'valid' | 'errors'>('valid');
+
 
   const initialFormState = {
     date: new Date().toISOString().split('T')[0],
@@ -57,117 +62,32 @@ const TransactionsView: React.FC<Props> = ({ transactions, onAdd, onBulkAdd, onU
     setFormData(initialFormState);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !onBulkAdd) return;
 
-    setImportErrors([]);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result as string;
-      const lines = text.split('\n').filter(line => line.trim() !== '');
-      if (lines.length <= 1) {
-        setImportErrors(["Arquivo CSV vazio ou sem linhas de dados."]);
-        return;
-      }
+    setIsParsing(true);
+    setParsedData(null);
 
-      const newTransactions: Transaction[] = [];
-      const errors: string[] = [];
-      const header = lines[0].trim().toLowerCase();
-      const delimiter = header.includes(';') ? ';' : ',';
-      
-      const parseRobustNumber = (numStr: string | undefined) => {
-        if (!numStr || !numStr.trim()) return 0;
-        const cleaned = numStr.trim();
-        const lastComma = cleaned.lastIndexOf(',');
-        const lastDot = cleaned.lastIndexOf('.');
-        if (lastComma > lastDot) {
-          return parseFloat(cleaned.replace(/\./g, '').replace(',', '.'));
-        }
-        return parseFloat(cleaned.replace(/,/g, ''));
-      };
-      
-      const parseRobustDate = (dateStr: string | undefined) => {
-        if (!dateStr || !dateStr.trim()) return new Date().toISOString().split('T')[0];
-        const cleaned = dateStr.trim();
-        if (/^\d{2}\/\d{2}\/\d{4}$/.test(cleaned)) {
-          const [day, month, year] = cleaned.split('/');
-          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        }
-        return cleaned;
-      };
-
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        const cols = line.split(delimiter).map(c => c.trim());
-        
-        const expectedColsMin = 7;
-        const expectedColsMax = 8;
-        if (cols.length < expectedColsMin) {
-          errors.push(`Linha ${i + 1}: Colunas insuficientes (esperado ${expectedColsMin} ou ${expectedColsMax}, encontrado ${cols.length}).`);
-          continue;
-        }
-
-        try {
-          const typeStr = cols[4].toLowerCase().trim();
-          let type: TransactionType | null = null;
-          if (typeStr.includes('compra')) type = TransactionType.BUY;
-          else if (typeStr.includes('venda')) type = TransactionType.SELL;
-          else if (typeStr.includes('dividendo')) type = TransactionType.DIVIDEND;
-          else if (typeStr.includes('bonifica')) type = TransactionType.BONUS;
-          else if (typeStr.includes('desdobramento') || typeStr.includes('grupamento')) type = TransactionType.SPLIT;
-          
-          if (!type) {
-            errors.push(`Linha ${i + 1}: Tipo de operação inválido: "${cols[4]}". Use Compra, Venda, etc.`);
-            continue;
-          }
-
-          const countryStr = cols[3].toUpperCase().trim();
-          const country = countryStr === 'EUA' || countryStr === 'USA' ? Country.USA : Country.BR;
-
-          const quantity = parseRobustNumber(cols[5]);
-          const unitPrice = parseRobustNumber(cols[6]);
-          const fees = cols.length >= expectedColsMax ? parseRobustNumber(cols[7]) : 0;
-
-          if (type !== TransactionType.SPLIT && (isNaN(quantity) || isNaN(unitPrice) || isNaN(fees))) {
-              errors.push(`Linha ${i+1}: Valor numérico inválido para Qtd, Preço ou Taxas.`);
-              continue;
-          }
-
-          newTransactions.push({
-            id: crypto.randomUUID(),
-            date: parseRobustDate(cols[0]),
-            ticker: cols[1].toUpperCase(),
-            broker: cols[2],
-            country,
-            category: AssetCategory.VARIABLE,
-            type,
-            quantity,
-            unitPrice,
-            fees,
-          });
-        } catch (err) {
-          errors.push(`Linha ${i + 1}: Erro inesperado. Detalhes: ${(err as Error).message}`);
-        }
-      }
-
-      setImportErrors(errors);
-
-      if (newTransactions.length > 0) {
-        if (confirm(`Encontradas ${newTransactions.length} transações válidas.\n\n${errors.length > 0 ? `${errors.length} linhas com erro foram ignoradas.` : ''}\n\nDeseja importar as transações válidas?`)) {
-          onBulkAdd(newTransactions);
-          setShowImport(false);
-        }
-      } else {
-        alert(`Nenhuma transação válida foi encontrada. ${errors.length > 0 ? `${errors.length} linhas continham erros.` : ''} Por favor, verifique o arquivo e tente novamente.`);
-      }
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    };
-    reader.readAsText(file);
+    const text = await file.text();
+    const result = await parseTransactionsFromCSV(text);
+    
+    setParsedData(result);
+    setModalTab(result && result.transactions.length > 0 ? 'valid' : 'errors');
+    setIsParsing(false);
+    
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+  
+  const handleConfirmImport = () => {
+    if (parsedData && parsedData.transactions.length > 0 && onBulkAdd) {
+      const transactionsWithIds = parsedData.transactions.map(tx => ({
+        ...tx,
+        id: crypto.randomUUID(),
+      } as Transaction));
+      onBulkAdd(transactionsWithIds);
+    }
+    setParsedData(null); // Fecha o modal
   };
 
   const handleInlineChange = (id: string, field: keyof Transaction, value: any) => {
@@ -194,6 +114,69 @@ const TransactionsView: React.FC<Props> = ({ transactions, onAdd, onBulkAdd, onU
 
   return (
     <div className="space-y-6">
+      {/* Overlay de Carregamento da IA */}
+      {isParsing && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center z-[999]">
+          <div className="flex items-center gap-4 bg-white p-6 rounded-2xl shadow-2xl">
+            <svg className="w-8 h-8 text-indigo-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <div>
+              <h3 className="font-bold text-slate-800">Analisando com Gemini...</h3>
+              <p className="text-sm text-slate-500">A IA está processando seu extrato.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Importação */}
+      {parsedData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-4xl h-[90vh] rounded-2xl shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-300">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-lg font-bold text-slate-800">Revisar Importação</h2>
+              <p className="text-sm text-slate-500">A IA processou seu arquivo. Verifique os dados antes de importar.</p>
+            </div>
+            <div className="p-2 bg-slate-50 border-b border-slate-200">
+              <div className="flex gap-2">
+                <button onClick={() => setModalTab('valid')} className={`px-4 py-2 rounded-lg text-sm font-bold ${modalTab === 'valid' ? 'bg-white text-indigo-600 shadow' : 'text-slate-500'}`}>
+                  Transações Válidas ({parsedData.transactions.length})
+                </button>
+                <button onClick={() => setModalTab('errors')} className={`px-4 py-2 rounded-lg text-sm font-bold ${modalTab === 'errors' ? 'bg-white text-rose-600 shadow' : 'text-slate-500'}`}>
+                  Linhas com Erro ({parsedData.errors.length})
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 p-6 overflow-y-auto">
+              {modalTab === 'valid' ? (
+                <table className="w-full text-left text-xs">
+                  <thead><tr className="border-b border-slate-100">
+                    <th className="py-2">Data</th><th>Ticker</th><th>Tipo</th><th className="text-right">Qtd</th><th className="text-right">Preço</th>
+                  </tr></thead>
+                  <tbody>
+                    {parsedData.transactions.map((tx, idx) => (
+                      <tr key={idx} className="border-b border-slate-50">
+                        <td className="py-2">{tx.date}</td><td>{tx.ticker}</td><td>{tx.type}</td><td className="text-right font-mono">{tx.quantity}</td><td className="text-right font-mono">{tx.unitPrice}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="space-y-2">
+                  {parsedData.errors.map((err, idx) => (
+                    <div key={idx} className="bg-rose-50 border border-rose-200 p-3 rounded-lg font-mono text-xs text-rose-700">{err}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+              <button onClick={() => setParsedData(null)} className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-lg font-bold text-sm">Cancelar</button>
+              <button onClick={handleConfirmImport} disabled={parsedData.transactions.length === 0} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm disabled:bg-slate-300">
+                Confirmar Importação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Histórico</h2>
@@ -201,38 +184,17 @@ const TransactionsView: React.FC<Props> = ({ transactions, onAdd, onBulkAdd, onU
         </div>
         <div className="flex gap-2 w-full md:w-auto">
            {onBulkAdd && (
-             <div className="relative">
-               <button 
-                 onClick={() => { setShowImport(!showImport); setImportErrors([]); }}
+             <>
+              <input type="file" accept=".csv,.txt" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+              <button 
+                 onClick={() => fileInputRef.current?.click()}
+                 disabled={isParsing}
                  className="bg-white text-slate-700 border border-slate-200 px-4 py-3 md:py-2 rounded-xl hover:bg-slate-50 transition-colors font-bold text-xs flex items-center justify-center gap-2 shadow-sm w-full md:w-auto"
                >
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                 <span className="md:inline">Importar</span>
+                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                 <span className="md:inline">Importar com IA</span>
                </button>
-               {showImport && (
-                 <div className="absolute top-full right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                    <label className="block w-full text-xs text-slate-500 mb-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                      <span className="font-bold text-slate-700">Formato CSV (8 colunas):</span><br/>
-                      <code className="text-[10px]">Data,Ticker,Corretora,País,Tipo,Qtd,Preço,Taxas</code>
-                    </label>
-                    <input 
-                      type="file" 
-                      accept=".csv"
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-                    />
-                    {importErrors.length > 0 && (
-                        <div className="mt-4 max-h-32 overflow-y-auto bg-rose-50 border border-rose-200 rounded-lg p-2 space-y-1">
-                          <p className="text-rose-700 font-bold text-xs mb-1">Erros encontrados:</p>
-                          {importErrors.map((error, index) => (
-                            <p key={index} className="text-rose-600 text-[10px] font-mono">{error}</p>
-                          ))}
-                        </div>
-                    )}
-                 </div>
-               )}
-             </div>
+             </>
            )}
            <button 
             onClick={() => setShowForm(!showForm)}
