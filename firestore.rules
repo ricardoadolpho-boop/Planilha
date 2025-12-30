@@ -3,16 +3,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Permite acesso total à coleção de transações.
-    // Em um ambiente de produção, isso seria restrito ao usuário autenticado (e.g., if request.auth != null).
-    match /transactions/{transactionId} {
-      allow read, write: if true;
+    // Concede permissão de leitura e escrita para toda a coleção 'transactions'.
+    // O curinga `{document=**}` corresponde tanto à coleção em si (para operações de 'list')
+    // quanto a qualquer documento dentro dela (para 'get', 'create', 'update', 'delete').
+    // Esta é a correção definitiva para o erro de permissão do listener.
+    match /transactions/{document=**} {
+      allow read, write: if true; // Em produção, mude 'true' para 'request.auth != null'
     }
 
-    // Permite acesso total à coleção de proventos anunciados.
-    // Esta regra corrige o erro "Missing or insufficient permissions".
-    match /announced_dividends/{dividendId} {
-      allow read, write: if true;
+    // Concede permissão de leitura e escrita para toda a coleção 'announced_dividends'.
+    match /announced_dividends/{document=**} {
+      allow read, write: if true; // Em produção, mude 'true' para 'request.auth != null'
     }
   }
 }
