@@ -1,4 +1,3 @@
-
 export enum Country {
   BR = 'BR',
   USA = 'EUA'
@@ -6,7 +5,7 @@ export enum Country {
 
 export enum AssetCategory {
   VARIABLE = 'Renda Variável',
-  FIXED = 'Renda Fria',
+  FIXED = 'Renda Fixa',
   FII = 'Fundo Imobiliário'
 }
 
@@ -15,7 +14,8 @@ export enum TransactionType {
   SELL = 'Venda',
   DIVIDEND = 'Dividendo',
   BONUS = 'Bonificação',
-  SPLIT = 'Desdobramento/Grupamento'
+  SPLIT = 'Desdobramento/Grupamento',
+  REDEMPTION = 'Resgate'
 }
 
 export interface Transaction {
@@ -31,6 +31,8 @@ export interface Transaction {
   fees: number;
   splitFrom?: number;
   splitTo?: number;
+  maturityDate?: string;
+  interestRate?: number;
 }
 
 export interface Lot {
@@ -59,6 +61,8 @@ export interface Position {
   totalDividends: number;
   lots: Lot[];
   currentPrice?: number;
+  maturityDate?: string;
+  interestRate?: number;
 }
 
 export interface MonthlyRealizedGain {
