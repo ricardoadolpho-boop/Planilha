@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Transaction, AnnouncedDividend } from './types';
 import { calculateConsolidatedData } from './services/investmentEngine';
 import { fetchRealTimePrices, MarketPrice } from './services/geminiService';
@@ -44,7 +44,9 @@ const App: React.FC = () => {
   const [inspectedTicker, setInspectedTicker] = useState<string | null>(null);
   const [usdRate] = useState(5.45); 
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
-  const [hasAttemptedAutoRefresh, setHasAttemptedAutoRefresh] = useState(false);
+  
+  // UseRef para controle estrito de inicialização única (Evita consumo excessivo de cota)
+  const autoRefreshRef = useRef(false);
   
   // State inicializa lendo do LocalStorage
   const [marketPrices, setMarketPrices] = useState<Record<string, MarketPrice>>(() => {
@@ -131,17 +133,13 @@ const App: React.FC = () => {
     }
   }, [tickersToUpdate, isUpdatingPrices]);
 
-  // Autoload inicial de preços - Lógica Protegida contra Loops
+  // Autoload inicial de preços - Lógica Protegida via Ref
   useEffect(() => {
-    // Só tenta atualizar automaticamente se:
-    // 1. Dados carregaram (isLoading false)
-    // 2. Temos tickers na carteira
-    // 3. Ainda NÃO tentamos atualizar nesta sessão (hasAttemptedAutoRefresh false)
-    if (!isLoading && tickersToUpdate.length > 0 && !hasAttemptedAutoRefresh) {
+    if (!isLoading && tickersToUpdate.length > 0 && !autoRefreshRef.current) {
       
       const doRefresh = async () => {
-         // Marca como tentado imediatamente para evitar múltiplas chamadas
-         setHasAttemptedAutoRefresh(true);
+         // Marca imediatamente como executado
+         autoRefreshRef.current = true;
          
          // Se não temos preços em cache ou na memória, chama atualização
          if (Object.keys(marketPrices).length === 0) {
@@ -149,11 +147,10 @@ const App: React.FC = () => {
          }
       };
 
-      // Pequeno delay para garantir que UI já montou
-      const timer = setTimeout(doRefresh, 1000);
+      const timer = setTimeout(doRefresh, 1500); // Delay leve para garantir estabilidade
       return () => clearTimeout(timer);
     }
-  }, [isLoading, tickersToUpdate.length, hasAttemptedAutoRefresh, marketPrices, refreshPrices]); 
+  }, [isLoading, tickersToUpdate.length, marketPrices, refreshPrices]); 
 
   // Engine Calculation
   const engineData = useMemo(() => 
