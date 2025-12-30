@@ -12,7 +12,7 @@ const CACHE_KEYS = {
 
 const CACHE_TTL = {
   SUMMARY: 1000 * 60 * 60, // 1 hora
-  PRICES: 1000 * 60 * 15   // Aumentado para 15 minutos para economizar cota
+  PRICES: 1000 * 60 * 15   // 15 minutos
 };
 
 export interface MarketPrice {
@@ -33,7 +33,6 @@ const isQuotaError = (error: unknown): boolean => {
   return msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
 };
 
-// Modificado para permitir recuperar cache expirado (stale) em caso de erro
 const getFromCache = <T>(key: string, ttl: number, ignoreTTL: boolean = false): T | null => {
   try {
     const raw = localStorage.getItem(key);
@@ -109,7 +108,6 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
     const jsonStr = response.text || '{"prices": []}';
     const result: PriceUpdateResponse = JSON.parse(jsonStr);
     
-    // Extração de fontes
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
       ?.filter(chunk => chunk.web)
       .map(chunk => ({
@@ -123,25 +121,21 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
     return result;
 
   } catch (error) {
-    console.error("Erro fetchRealTimePrices:", error);
-    
+    // Tratamento de erro 429 silencioso para não assustar o usuário
     if (isQuotaError(error)) {
-      console.warn("Cota excedida (429). Tentando recuperar cache antigo...");
+      console.warn("Gemini API: Cota excedida (429). Usando modo offline/cache.");
       
-      // 2. Fallback: Cache Expirado (Stale-while-error)
       const staleCache = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, 0, true);
-      if (staleCache) {
-        return staleCache;
-      }
+      if (staleCache) return staleCache;
 
-      // 3. Fallback Drástico: Objeto zerado para evitar crash da UI e loop de retry
+      // Fallback seguro: Retorna zeros para não quebrar a UI
       return { 
         prices: tickers.map(t => ({ ticker: t, price: 0, changePercent: 0 })), 
         sources: [] 
       };
     }
-    
-    // Se não for erro de cota, mas outro erro (ex: rede), tenta stale também
+
+    console.error("Erro fetchRealTimePrices:", error);
     const staleCache = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, 0, true);
     return staleCache || null;
   }
@@ -156,7 +150,6 @@ export const getMarketSummary = async (tickers: string[]): Promise<string> => {
     const raw = localStorage.getItem(CACHE_KEYS.SUMMARY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Cache de summary dura 1h
       if (Date.now() - parsed.timestamp < CACHE_TTL.SUMMARY && parsed.contextKey === tickersKey) {
         return parsed.data;
       }
@@ -175,7 +168,7 @@ export const getMarketSummary = async (tickers: string[]): Promise<string> => {
     return text;
 
   } catch (error) {
-    if (isQuotaError(error)) return "Análise temporariamente indisponível (Cota excedida).";
+    if (isQuotaError(error)) return "Análise temporariamente indisponível (Cota de IA excedida).";
     return "Erro ao gerar análise.";
   }
 };
@@ -235,11 +228,9 @@ export const parseTransactionsFromCSV = async (csvContent: string): Promise<Pars
       },
     });
 
-    // Correção: Garantir que response.text não seja undefined antes do parse
-    const jsonStr = response.text || '{"transactions": [], "errors": ["Resposta vazia da IA"]}';
+    const jsonStr = response.text || '{"transactions": [], "errors": ["Resposta vazia"]}';
     const result: ParsedImportResult = JSON.parse(jsonStr);
     
-    // Limpeza pós-processamento
     result.transactions.forEach(tx => {
       if (!tx.splitFrom) delete tx.splitFrom;
       if (!tx.splitTo) delete tx.splitTo;
