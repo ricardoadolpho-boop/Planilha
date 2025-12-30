@@ -95,7 +95,8 @@ const App: React.FC = () => {
     if (tickersToUpdate.length > 0 && Object.keys(marketPrices).length === 0) {
       refreshPrices();
     }
-    const interval = setInterval(refreshPrices, 120000); 
+    // Aumentado para 5 minutos (300000ms) para economizar cota da API Gemini
+    const interval = setInterval(refreshPrices, 300000); 
     return () => clearInterval(interval);
   }, [tickersToUpdate.length, marketPrices, refreshPrices]);
 
