@@ -1,5 +1,6 @@
 
 import { initializeApp } from "firebase/app";
+import "firebase/firestore"; // Importa para registrar o serviço (corrige o erro)
 import { getFirestore, enableIndexedDbPersistence, disableNetwork, enableNetwork } from "firebase/firestore";
 
 // Configuração oficial do projeto planilhafinanceira01, corrigida com a API Key correta.
