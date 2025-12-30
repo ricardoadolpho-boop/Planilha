@@ -3,15 +3,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Permite que a aplicação leia e escreva dados na coleção de transações.
-    // Para um app de uso pessoal, isso é seguro. Em um app multi-usuário,
-    // as regras seriam mais restritivas (ex: if request.auth.uid != null).
+    // Regra para a coleção de transações.
+    // Para um app de uso pessoal, a permissão aberta é aceitável.
     match /transactions/{transactionId} {
       allow read, write: if true;
     }
 
-    // Permite que a aplicação leia e escreva dados na coleção de proventos anunciados.
+    // Regras para a coleção de proventos anunciados
     match /announced_dividends/{dividendId} {
+      // Permite que qualquer usuário leia (get/list) e escreva (create/update/delete)
+      // documentos nesta coleção. Esta regra precisa ser implantada (deploy) no Firebase
+      // para resolver o erro de permissão.
       allow read, write: if true;
     }
   }
