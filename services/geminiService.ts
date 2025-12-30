@@ -12,7 +12,7 @@ const CACHE_KEYS = {
 
 const CACHE_TTL = {
   SUMMARY: 1000 * 60 * 60, // 1 hora
-  PRICES: 1000 * 60 * 5    // 5 minutos
+  PRICES: 1000 * 60 * 15   // Aumentado para 15 minutos para economizar cota
 };
 
 export interface MarketPrice {
@@ -33,15 +33,16 @@ const isQuotaError = (error: unknown): boolean => {
   return msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota');
 };
 
-const getFromCache = <T>(key: string, ttl: number): T | null => {
+// Modificado para permitir recuperar cache expirado (stale) em caso de erro
+const getFromCache = <T>(key: string, ttl: number, ignoreTTL: boolean = false): T | null => {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     
-    const { timestamp, data, contextKey } = JSON.parse(raw);
+    const { timestamp, data } = JSON.parse(raw);
     const now = Date.now();
     
-    if (now - timestamp < ttl) {
+    if (ignoreTTL || (now - timestamp < ttl)) {
       return data as T;
     }
     return null;
@@ -67,13 +68,11 @@ const setCache = (key: string, data: any, contextKey?: string) => {
 export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdateResponse | null> => {
   if (tickers.length === 0) return null;
 
-  const sortedTickersKey = tickers.sort().join(',');
   const cached = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, CACHE_TTL.PRICES);
 
-  // Verificação simples de cache: se existe cache válido, retornamos ele para economizar cota.
-  // Em uma app real, verificaríamos se o cache cobre TODOS os tickers solicitados.
+  // 1. Tenta Cache Válido
   if (cached) {
-    console.log("Usando cache de preços.");
+    console.log("Usando cache de preços (válido).");
     return cached;
   }
 
@@ -107,11 +106,10 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
       },
     });
 
-    // A propriedade .text retorna a string JSON diretamente
     const jsonStr = response.text || '{"prices": []}';
     const result: PriceUpdateResponse = JSON.parse(jsonStr);
     
-    // Extração de fontes do grounding (se houver)
+    // Extração de fontes
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
       ?.filter(chunk => chunk.web)
       .map(chunk => ({
@@ -126,11 +124,26 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
 
   } catch (error) {
     console.error("Erro fetchRealTimePrices:", error);
+    
     if (isQuotaError(error)) {
-      // Fallback silencioso em caso de erro de cota
-      return cached || { prices: tickers.map(t => ({ ticker: t, price: 0, changePercent: 0 })), sources: [] };
+      console.warn("Cota excedida (429). Tentando recuperar cache antigo...");
+      
+      // 2. Fallback: Cache Expirado (Stale-while-error)
+      const staleCache = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, 0, true);
+      if (staleCache) {
+        return staleCache;
+      }
+
+      // 3. Fallback Drástico: Objeto zerado para evitar crash da UI e loop de retry
+      return { 
+        prices: tickers.map(t => ({ ticker: t, price: 0, changePercent: 0 })), 
+        sources: [] 
+      };
     }
-    return cached || null;
+    
+    // Se não for erro de cota, mas outro erro (ex: rede), tenta stale também
+    const staleCache = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, 0, true);
+    return staleCache || null;
   }
 };
 
@@ -138,11 +151,12 @@ export const getMarketSummary = async (tickers: string[]): Promise<string> => {
   if (tickers.length === 0) return "Adicione ativos.";
 
   const tickersKey = tickers.sort().join(',');
-  // Lógica customizada de cache para verificar se os tickers são os mesmos
+  
   try {
     const raw = localStorage.getItem(CACHE_KEYS.SUMMARY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      // Cache de summary dura 1h
       if (Date.now() - parsed.timestamp < CACHE_TTL.SUMMARY && parsed.contextKey === tickersKey) {
         return parsed.data;
       }
@@ -174,7 +188,7 @@ export interface ParsedImportResult {
 export const parseTransactionsFromCSV = async (csvContent: string): Promise<ParsedImportResult | null> => {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview", // Modelo Pro para maior capacidade de raciocínio em estruturas complexas
+      model: "gemini-3-pro-preview", 
       contents: `Atue como um engenheiro de dados financeiros. Converta este CSV de corretora para JSON.
       
       Regras:
@@ -233,7 +247,7 @@ export const parseTransactionsFromCSV = async (csvContent: string): Promise<Pars
 
   } catch (error) {
     console.error("Erro importação:", error);
-    if (isQuotaError(error)) return { transactions: [], errors: ["Limite de IA excedido."] };
+    if (isQuotaError(error)) return { transactions: [], errors: ["Limite de IA excedido. Tente novamente mais tarde."] };
     return { transactions: [], errors: ["Erro ao processar arquivo."] };
   }
 };
@@ -248,6 +262,7 @@ export const generateDarfExplanation = async (summary: TaxMonthlySummary): Promi
     });
     return response.text || "Explicação não gerada.";
   } catch (error) {
+    if (isQuotaError(error)) return "Limite de cota excedido. Não foi possível gerar a explicação agora.";
     return "Erro ao gerar explicação fiscal.";
   }
 };
