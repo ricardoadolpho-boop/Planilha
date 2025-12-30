@@ -235,7 +235,9 @@ export const parseTransactionsFromCSV = async (csvContent: string): Promise<Pars
       },
     });
 
-    const result: ParsedImportResult = JSON.parse(response.text);
+    // Correção: Garantir que response.text não seja undefined antes do parse
+    const jsonStr = response.text || '{"transactions": [], "errors": ["Resposta vazia da IA"]}';
+    const result: ParsedImportResult = JSON.parse(jsonStr);
     
     // Limpeza pós-processamento
     result.transactions.forEach(tx => {
