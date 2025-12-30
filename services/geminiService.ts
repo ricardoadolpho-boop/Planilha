@@ -35,28 +35,10 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
       contents: `Forneça o preço de mercado atual e a variação percentual do dia para os seguintes ativos de bolsa de valores: ${tickers.join(", ")}. 
       Considere ativos brasileiros (B3/BVMF) e americanos (NYSE/NASDAQ). 
       Retorne os valores na moeda original de cada ativo.
-      IMPORTANTE: No objeto JSON de resposta, a propriedade 'ticker' DEVE corresponder EXATAMENTE ao ticker fornecido na lista de entrada. Não adicione sufixos como ".SA" ou altere a capitalização.`,
+      IMPORTANTE: No objeto JSON de resposta, a propriedade 'ticker' DEVE corresponder EXATAMENTE ao ticker fornecido na lista de entrada. Não adicione sufixos como ".SA" ou altere a capitalização.
+      A resposta deve ser APENAS um objeto JSON válido, sem markdown ou texto adicional, no seguinte formato: {"prices": [{"ticker": "TICKER", "price": 123.45, "changePercent": 1.23}]}`,
       config: {
         tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            prices: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  ticker: { type: Type.STRING },
-                  price: { type: Type.NUMBER },
-                  changePercent: { type: Type.NUMBER }
-                },
-                required: ["ticker", "price", "changePercent"]
-              }
-            }
-          },
-          required: ["prices"]
-        }
       },
     });
 
@@ -74,7 +56,7 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
         })) || [];
 
       return {
-        prices: jsonData.prices,
+        prices: jsonData.prices || [],
         sources: sources
       };
     } catch (parseError) {
