@@ -97,9 +97,16 @@ const fetchFromCustomOracle = async (url: string, tickers: string[]): Promise<Pr
     const targetUrl = `${url}${url.includes('?') ? '&' : '?'}tickers=${formattedTickers.join(',')}`;
     
     const response = await fetch(targetUrl);
-    if (!response.ok) throw new Error('Erro no Oráculo');
+    if (!response.ok) throw new Error(`Erro no Oráculo: ${response.status}`);
     
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.warn("Oráculo retornou conteúdo não-JSON:", text.substring(0, 100));
+      return null;
+    }
     
     // Normalização dos dados vindos do GAS
     // Espera formato: { prices: [{ ticker: 'PETR4', price: 35.5, change: 1.2 }] }
@@ -120,14 +127,16 @@ const fetchFromCustomOracle = async (url: string, tickers: string[]): Promise<Pr
   }
 };
 
-export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdateResponse | null> => {
+export const fetchRealTimePrices = async (tickers: string[], forceRefresh: boolean = false): Promise<PriceUpdateResponse | null> => {
   if (tickers.length === 0) return null;
 
-  // 1. Verifica Cache
-  const cached = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, CACHE_TTL.PRICES);
-  if (cached) {
-    console.log("Usando cache de preços.");
-    return cached;
+  // 1. Verifica Cache (apenas se não forçado)
+  if (!forceRefresh) {
+    const cached = getFromCache<PriceUpdateResponse>(CACHE_KEYS.PRICES, CACHE_TTL.PRICES);
+    if (cached) {
+      console.log("Usando cache de preços.");
+      return cached;
+    }
   }
 
   // 2. Tenta ORÁCULO CUSTOMIZADO (Prioridade Máxima)
@@ -135,7 +144,7 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
   const customApiUrl = localStorage.getItem('custom_api_url') || DEFAULT_ORACLE_URL;
   
   if (customApiUrl) {
-    console.log("Usando Oráculo Customizado...");
+    console.log(`Usando Oráculo Customizado (Force: ${forceRefresh})...`);
     const oracleResult = await fetchFromCustomOracle(customApiUrl, tickers);
     if (oracleResult) {
       setCache(CACHE_KEYS.PRICES, oracleResult);
