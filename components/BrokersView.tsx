@@ -68,7 +68,7 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
 
             {/* MOBILE CARD VIEW */}
             <div className="block md:hidden divide-y divide-slate-100">
-               {castedPositions.sort((a, b) => b.totalInvested - a.totalInvested).map((pos, idx) => {
+               {castedPositions.sort((a, b) => a.ticker.localeCompare(b.ticker)).map((pos, idx) => {
                   const marketData = marketPrices[pos.ticker];
                   const currentPrice = marketData?.price || pos.averagePrice;
                   const profitPct = pos.averagePrice > 0 ? ((currentPrice - pos.averagePrice) / pos.averagePrice) * 100 : 0;
@@ -118,7 +118,7 @@ const BrokersView: React.FC<Props> = ({ positions, usdRate, marketPrices }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {castedPositions.sort((a, b) => b.totalInvested - a.totalInvested).map((pos, idx) => {
+                  {castedPositions.sort((a, b) => a.ticker.localeCompare(b.ticker)).map((pos, idx) => {
                     const marketData = marketPrices[pos.ticker];
                     const currentPrice = marketData?.price || pos.averagePrice;
                     const profitPct = pos.averagePrice > 0 ? ((currentPrice - pos.averagePrice) / pos.averagePrice) * 100 : 0;
