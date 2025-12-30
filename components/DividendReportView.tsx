@@ -10,11 +10,6 @@ interface Props {
   onDeleteAnnouncedDividend: (id: string) => void;
 }
 
-interface DividendEntry {
-  date: string;
-  amount: number;
-}
-
 const DividendReportView: React.FC<Props> = ({ transactions, usdRate, announcedDividends, positions, onAddAnnouncedDividend, onDeleteAnnouncedDividend }) => {
   const [showForm, setShowForm] = useState(false);
   const initialFormState = {
