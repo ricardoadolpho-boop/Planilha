@@ -2,18 +2,9 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Regra para a coleção de transações.
-    // Para um app de uso pessoal, a permissão aberta é aceitável.
-    match /transactions/{transactionId} {
-      allow read, write: if true;
-    }
-
-    // Regras para a coleção de proventos anunciados
-    match /announced_dividends/{dividendId} {
-      // Permite que qualquer usuário leia (get/list) e escreva (create/update/delete)
-      // documentos nesta coleção. Esta regra precisa ser implantada (deploy) no Firebase
-      // para resolver o erro de permissão.
+    // Regra global permissiva para evitar erros de permissão durante o desenvolvimento.
+    // Isso garante acesso tanto a 'transactions' quanto 'announced_dividends'.
+    match /{document=**} {
       allow read, write: if true;
     }
   }
