@@ -227,6 +227,7 @@ const App: React.FC = () => {
                </h2>
                <p className="text-slate-500 font-medium text-xs md:text-base">
                 {customApiUrl ? 'Conectado ao Oráculo GAS (Alta Confiabilidade)' : 'Modo IA Gemini (Fallback)'}
+                {lastUpdated && <span className="block text-[10px] text-slate-400 font-normal">Última atualização: {lastUpdated.toLocaleTimeString()}</span>}
                </p>
             </div>
             
