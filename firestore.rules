@@ -2,14 +2,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Transactions Collection - Standard Match
-    match /transactions/{docId} {
-      allow read, write: if true;
-    }
-
-    // Announced Dividends Collection - Standard Match
-    match /announced_dividends/{docId} {
+    // Regra Global (Modo Teste/Desenvolvimento)
+    // Permite leitura e escrita em TODAS as coleções (transactions, announced_dividends, etc.)
+    // Isso corrige o erro de permissão insuficiente.
+    match /{document=**} {
       allow read, write: if true;
     }
   }
