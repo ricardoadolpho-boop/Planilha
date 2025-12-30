@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Transaction, AnnouncedDividend } from './types';
+import { Transaction, AnnouncedDividend, AssetCategory } from './types';
 import { calculateConsolidatedData } from './services/investmentEngine';
 import { fetchRealTimePrices, MarketPrice } from './services/geminiService';
 import DashboardView from './components/DashboardView';
@@ -68,9 +68,13 @@ const App: React.FC = () => {
   }, []);
 
   const tickersToUpdate = useMemo(() => {
-    const set = new Set<string>();
-    transactions.forEach(t => set.add(t.ticker));
-    return Array.from(set);
+    const variableIncomeTickers = new Set<string>();
+    transactions.forEach(t => {
+      if (t.category === AssetCategory.VARIABLE || t.category === AssetCategory.FII) {
+        variableIncomeTickers.add(t.ticker);
+      }
+    });
+    return Array.from(variableIncomeTickers);
   }, [transactions]);
 
   const refreshPrices = useCallback(async () => {
