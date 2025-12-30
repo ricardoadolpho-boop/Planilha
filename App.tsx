@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Transaction } from './types';
+import { Transaction, AnnouncedDividend } from './types';
 import { calculateConsolidatedData } from './services/investmentEngine';
 import { fetchRealTimePrices, MarketPrice } from './services/geminiService';
 import DashboardView from './components/DashboardView';
@@ -22,21 +22,20 @@ const App: React.FC = () => {
   
   // State agora começa vazio e é preenchido pelo Firestore
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [announcedDividends, setAnnouncedDividends] = useState<AnnouncedDividend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
 
-  // Efeito para sincronização em Tempo Real (Listener)
+  // Efeito para sincronização em Tempo Real (Listeners)
   useEffect(() => {
-    const q = query(collection(db, "transactions"));
-    
-    // Feedback imediato de conexão
     setDbStatus('connecting');
-
-    const unsubscribe = onSnapshot(q, 
+    
+    // Listener para Transações
+    const qTx = query(collection(db, "transactions"));
+    const unsubscribeTx = onSnapshot(qTx, 
       (querySnapshot) => {
         const txs: Transaction[] = [];
         querySnapshot.forEach((doc) => {
-          // Garantimos que o ID do documento seja o ID da transação
           txs.push({ ...doc.data(), id: doc.id } as Transaction);
         });
         setTransactions(txs);
@@ -44,13 +43,31 @@ const App: React.FC = () => {
         setDbStatus('connected');
       }, 
       (error) => {
-        console.error("Erro ao conectar com Firebase:", error);
+        console.error("Erro no listener de Transações:", error.message);
         setIsLoading(false);
         setDbStatus('error');
       }
     );
 
-    return () => unsubscribe();
+    // Listener para Proventos Anunciados
+    const qAnnounced = query(collection(db, "announced_dividends"));
+    const unsubscribeAnnounced = onSnapshot(qAnnounced,
+      (querySnapshot) => {
+        const divs: AnnouncedDividend[] = [];
+        querySnapshot.forEach((doc) => {
+            divs.push({ ...doc.data(), id: doc.id } as AnnouncedDividend);
+        });
+        setAnnouncedDividends(divs);
+      },
+      (error) => {
+        console.error("Erro no listener de Proventos Anunciados:", error.message);
+      }
+    );
+
+    return () => {
+      unsubscribeTx();
+      unsubscribeAnnounced();
+    };
   }, []);
 
   const tickersToUpdate = useMemo(() => {
@@ -87,49 +104,37 @@ const App: React.FC = () => {
     [transactions, usdRate]
   );
 
-  // CRUD via Firestore
+  // CRUD Transações
   const addTransaction = async (tx: Transaction) => {
     try {
       await setDoc(doc(db, "transactions", tx.id), tx);
-    } catch (e) {
-      console.error("Erro ao adicionar transação: ", e);
-      alert("Erro ao salvar no banco de dados.");
-    }
+    } catch (e) { console.error("Erro ao adicionar transação: ", e); }
   };
-
   const bulkAddTransactions = async (txs: Transaction[]) => {
-    try {
-      const batch = writeBatch(db);
-      txs.forEach((tx) => {
-        const docRef = doc(db, "transactions", tx.id);
-        batch.set(docRef, tx);
-      });
-      await batch.commit();
-      alert(`${txs.length} transações importadas com sucesso!`);
-    } catch (e) {
-      console.error("Erro na importação em massa: ", e);
-      alert("Erro ao importar dados. Verifique o console.");
-    }
+    const batch = writeBatch(db);
+    txs.forEach((tx) => {
+      const docRef = doc(db, "transactions", tx.id);
+      batch.set(docRef, tx);
+    });
+    await batch.commit();
   };
-
   const updateTransaction = async (tx: Transaction) => {
-    try {
-      const txRef = doc(db, "transactions", tx.id);
-      const { id, ...data } = tx;
-      await updateDoc(txRef, data);
-    } catch (e) {
-      console.error("Erro ao atualizar: ", e);
-      alert("Erro ao atualizar transação.");
-    }
+    const txRef = doc(db, "transactions", tx.id);
+    const { id, ...data } = tx;
+    await updateDoc(txRef, data);
+  };
+  const deleteTransaction = async (id: string) => {
+    await deleteDoc(doc(db, "transactions", id));
   };
 
-  const deleteTransaction = async (id: string) => {
+  // CRUD Proventos Anunciados
+  const addAnnouncedDividend = async (div: AnnouncedDividend) => {
     try {
-      await deleteDoc(doc(db, "transactions", id));
-    } catch (e) {
-      console.error("Erro ao deletar: ", e);
-      alert("Erro ao remover transação.");
-    }
+      await setDoc(doc(db, "announced_dividends", div.id), div);
+    } catch (e) { console.error("Erro ao adicionar provento anunciado: ", e); }
+  };
+  const deleteAnnouncedDividend = async (id: string) => {
+    await deleteDoc(doc(db, "announced_dividends", id));
   };
 
   const handleInspectTicker = (ticker: string) => {
@@ -297,7 +302,16 @@ const App: React.FC = () => {
             )
           )}
           {activeTab === 'tax' && <TaxReportView taxReport={taxReport} />}
-          {activeTab === 'dividends' && <DividendReportView transactions={transactions} usdRate={usdRate} />}
+          {activeTab === 'dividends' && (
+            <DividendReportView 
+              transactions={transactions} 
+              usdRate={usdRate}
+              announcedDividends={announcedDividends}
+              positions={activePositions}
+              onAddAnnouncedDividend={addAnnouncedDividend}
+              onDeleteAnnouncedDividend={deleteAnnouncedDividend}
+            />
+          )}
           {activeTab === 'brokers' && (
             <BrokersView positions={activePositions} usdRate={usdRate} marketPrices={marketPrices} />
           )}
