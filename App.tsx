@@ -20,17 +20,15 @@ const App: React.FC = () => {
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
   const [marketPrices, setMarketPrices] = useState<Record<string, MarketPrice>>({});
   
-  // State agora começa vazio e é preenchido pelo Firestore
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [announcedDividends, setAnnouncedDividends] = useState<AnnouncedDividend[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  // Efeito para sincronização em Tempo Real (Listeners)
   useEffect(() => {
     setDbStatus('connecting');
     
-    // Listener para Transações
     const qTx = query(collection(db, "transactions"));
     const unsubscribeTx = onSnapshot(qTx, 
       (querySnapshot) => {
@@ -49,7 +47,6 @@ const App: React.FC = () => {
       }
     );
 
-    // Listener para Proventos Anunciados
     const qAnnounced = query(collection(db, "announced_dividends"));
     const unsubscribeAnnounced = onSnapshot(qAnnounced,
       (querySnapshot) => {
@@ -79,23 +76,27 @@ const App: React.FC = () => {
   const refreshPrices = useCallback(async () => {
     if (isUpdatingPrices || tickersToUpdate.length === 0) return;
     setIsUpdatingPrices(true);
-    
-    const result = await fetchRealTimePrices(tickersToUpdate);
-    if (result) {
+    setApiError(null);
+
+    try {
+      const result = await fetchRealTimePrices(tickersToUpdate);
       const priceMap: Record<string, MarketPrice> = {};
       result.prices.forEach(p => {
         priceMap[p.ticker] = p;
       });
       setMarketPrices(priceMap);
+    } catch (error: any) {
+      setApiError(error.message || 'Ocorreu um erro desconhecido.');
+      setTimeout(() => setApiError(null), 8000); // Auto-dismiss
+    } finally {
+      setIsUpdatingPrices(false);
     }
-    setIsUpdatingPrices(false);
   }, [tickersToUpdate, isUpdatingPrices]);
 
   useEffect(() => {
     if (tickersToUpdate.length > 0 && Object.keys(marketPrices).length === 0) {
       refreshPrices();
     }
-    // Aumentado para 5 minutos (300000ms) para economizar cota da API Gemini
     const interval = setInterval(refreshPrices, 300000); 
     return () => clearInterval(interval);
   }, [tickersToUpdate.length, marketPrices, refreshPrices]);
@@ -105,7 +106,6 @@ const App: React.FC = () => {
     [transactions, usdRate]
   );
 
-  // CRUD Transações
   const addTransaction = async (tx: Transaction) => {
     try {
       await setDoc(doc(db, "transactions", tx.id), tx);
@@ -128,7 +128,6 @@ const App: React.FC = () => {
     await deleteDoc(doc(db, "transactions", id));
   };
 
-  // CRUD Proventos Anunciados
   const addAnnouncedDividend = async (div: AnnouncedDividend) => {
     try {
       await setDoc(doc(db, "announced_dividends", div.id), div);
@@ -174,7 +173,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Mobile Bottom Nav Component
   const MobileNav = () => (
     <div className="fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 flex justify-around items-center py-3 px-2 z-50 md:hidden shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
       <button 
@@ -217,7 +215,19 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50">
-      {/* Sidebar Desktop - Hidden on Mobile */}
+      {apiError && (
+        <div className="fixed top-5 right-5 bg-rose-600 text-white p-4 rounded-xl shadow-2xl z-[100] max-w-sm animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-start gap-3">
+            <svg className="w-6 h-6 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <div>
+              <p className="font-bold text-sm">Erro na API</p>
+              <p className="text-xs">{apiError}</p>
+            </div>
+            <button onClick={() => setApiError(null)} className="ml-4 -mr-1 -mt-1 p-1 rounded-full hover:bg-rose-700 transition-colors">&times;</button>
+          </div>
+        </div>
+      )}
+
       <aside className="hidden md:flex w-64 bg-slate-900 text-white flex-col sticky top-0 h-screen p-6 shadow-2xl z-10">
         <div className="flex items-center gap-3 mb-10">
           <div className="bg-indigo-600 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
@@ -227,7 +237,6 @@ const App: React.FC = () => {
         </div>
 
         <nav className="flex-1 space-y-2">
-          {/* Menu Items Desktop */}
           <button onClick={() => { setActiveTab('dash'); setInspectedTicker(null); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${activeTab === 'dash' && !inspectedTicker ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800'}`}>
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             Dashboard
@@ -250,7 +259,6 @@ const App: React.FC = () => {
           </button>
         </nav>
 
-        {/* Status de Conexão DB */}
         <div className="mt-6 pt-6 border-t border-slate-800">
            <div className="flex items-center gap-3 px-2">
               <div className="relative">
@@ -267,7 +275,6 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content with Mobile Padding */}
       <main className="flex-1 p-4 md:p-10 overflow-y-auto pb-24 md:pb-10">
         <header className="mb-6 flex flex-col gap-4">
           <div className="flex justify-between items-center">
@@ -346,7 +353,6 @@ const App: React.FC = () => {
         </div>
       </main>
       
-      {/* Mobile Navigation */}
       <MobileNav />
     </div>
   );
