@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Transaction, TransactionType, Country, AssetCategory, TaxMonthlySummary } from '../types';
+import { TransactionType, Country, AssetCategory, TaxMonthlySummary } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
