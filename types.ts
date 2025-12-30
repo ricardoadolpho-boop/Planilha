@@ -94,3 +94,13 @@ export interface HistoricalPoint {
   equity: number;
   invested: number;
 }
+
+// NOVO: Estrutura para Proventos Anunciados (A Receber)
+export interface AnnouncedDividend {
+  id: string;
+  ticker: string;
+  country: Country;
+  exDate: string; // Data "Com"
+  paymentDate: string; // Data de Pagamento
+  amountPerShare: number; // Valor por cota/ação
+}
