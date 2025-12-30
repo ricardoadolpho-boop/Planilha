@@ -3,6 +3,9 @@ import { Transaction, TransactionType, Country, AssetCategory, TaxMonthlySummary
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// URL padrão do Oráculo (Google Apps Script) para cotações gratuitas e confiáveis
+export const DEFAULT_ORACLE_URL = "https://script.google.com/macros/s/AKfycbxhvrC6eNUFqaG7W53rfPI0df4rQ42dxLxxQYuBSJlTWH8WHD6SefICwTxWLdkkeu-z/exec";
+
 const CACHE_KEYS = {
   SUMMARY: 'gemini_market_summary_v1',
   PRICES: 'gemini_prices_cache_v1'
@@ -128,7 +131,9 @@ export const fetchRealTimePrices = async (tickers: string[]): Promise<PriceUpdat
   }
 
   // 2. Tenta ORÁCULO CUSTOMIZADO (Prioridade Máxima)
-  const customApiUrl = localStorage.getItem('custom_api_url');
+  // Usa URL do LocalStorage ou o Default hardcoded
+  const customApiUrl = localStorage.getItem('custom_api_url') || DEFAULT_ORACLE_URL;
+  
   if (customApiUrl) {
     console.log("Usando Oráculo Customizado...");
     const oracleResult = await fetchFromCustomOracle(customApiUrl, tickers);
